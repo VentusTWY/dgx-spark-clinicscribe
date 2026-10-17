@@ -7,6 +7,7 @@ import json
 import os
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
 
 DEFAULT_BASE_URL = "http://localhost:8000/v1"
@@ -25,6 +26,10 @@ class LLMClient:
         # Reasoning tokens count against max_tokens; raise it if content comes back empty.
         self.max_tokens = int(os.environ.get("LLM_MAX_TOKENS", "4096"))
         self.completion_tokens = 0
+        # A local server must not go through an http_proxy set in the environment.
+        host = urllib.parse.urlparse(self.base_url).hostname or ""
+        local = host in ("localhost", "127.0.0.1", "::1") or host.endswith(".local")
+        self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({})) if local else urllib.request.build_opener()
 
     def _request(self, method, path, body=None):
         data = json.dumps(body).encode() if body is not None else None
@@ -35,7 +40,7 @@ class LLMClient:
             headers={"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"},
         )
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            with self._opener.open(req, timeout=self.timeout) as resp:
                 return json.loads(resp.read().decode())
         except urllib.error.HTTPError as e:
             raise LLMError(f"{method} {path} -> HTTP {e.code}: {e.read().decode(errors='replace')[:500]}") from e
