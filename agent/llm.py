@@ -10,9 +10,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-# The event's ATOM serves Lightning through Emarque's switchyard router on 9010
-# (port 8000 is taken by another service there).
-DEFAULT_BASE_URL = "http://127.0.0.1:9010/v1"
+# On the event ATOM, `demo kit-up` serves Lightning with vLLM on 9000. The
+# switchyard router on 9010 only runs with `demo kit-up switchyard`, and
+# port 8000 belongs to another service there.
+DEFAULT_BASE_URL = "http://127.0.0.1:9000/v1"
 PREFERRED_MODEL = "lightning"
 
 
@@ -63,7 +64,7 @@ class LLMClient:
             self._model = PREFERRED_MODEL if PREFERRED_MODEL in models else models[0]
         return self._model
 
-    def chat(self, messages, tools=None, temperature=0.2, max_tokens=None, json_mode=False):
+    def chat(self, messages, tools=None, temperature=0.2, max_tokens=None, json_mode=False, thinking=None):
         body = {
             "model": self.model,
             "messages": messages,
@@ -75,8 +76,10 @@ class LLMClient:
             body["tool_choice"] = "auto"
         if json_mode:
             body["response_format"] = {"type": "json_object"}
-        # Nemotron reasoning models think by default; set LLM_THINKING=0 to switch it off.
-        if os.environ.get("LLM_THINKING") == "0":
+        # Nemotron reasoning models think by default; set LLM_THINKING=0 to switch it off everywhere.
+        if thinking is None:
+            thinking = os.environ.get("LLM_THINKING") != "0"
+        if not thinking:
             body["chat_template_kwargs"] = {"enable_thinking": False}
         resp = self._request("POST", "/chat/completions", body)
         self.completion_tokens += (resp.get("usage") or {}).get("completion_tokens", 0)
@@ -84,6 +87,26 @@ class LLMClient:
             return resp["choices"][0]["message"]
         except (KeyError, IndexError) as e:
             raise LLMError(f"Unexpected response: {json.dumps(resp)[:500]}") from e
+
+
+    def chat_json(self, messages):
+        """Ask for a JSON object and parse it. Thinking is off for these short
+        judging tasks: with it on, the reasoning can use up max_tokens and leave
+        the answer empty. Falls back to plain mode if the server rejects
+        response_format, and to thinking on if the answer is still empty."""
+        attempts = [dict(json_mode=True, thinking=False), dict(thinking=False), dict(max_tokens=self.max_tokens * 2)]
+        last = ""
+        for kwargs in attempts:
+            try:
+                msg = self.chat(messages, temperature=0.0, **kwargs)
+            except LLMError as e:
+                if "HTTP 400" in str(e):
+                    continue
+                raise
+            last = msg.get("content") or ""
+            if strip_thinking(last):
+                return parse_json_loose(last)
+        raise ValueError(f"No JSON answer from the model: {last[:200]!r}")
 
 
 def strip_thinking(text):

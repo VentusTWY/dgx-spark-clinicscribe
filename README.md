@@ -133,7 +133,13 @@ cd dgx-spark-clinicscribe
 ./scripts/check_server.sh                         # 1. is Lightning up? does tool calling work?
 ./scripts/run_agent.sh samples/transcript_urti.json   # 2. run the agent on the sample visit
 ./scripts/run_agent.sh samples/diarized_urti.json     # 3. same visit as diarization + ASR output
+./scripts/run_agent.sh samples/diarized_hero_aia.json # 4. demo case: 3-day MC on AIA (limit 2) gets flagged
 ```
+
+Measured on our ATOM (EMARQUE-DGX-H): the 100 s sample consult takes about 64 s through the agent
+with Lightning thinking on (6.3k completion tokens). `LLM_THINKING=0` turns reasoning off for the
+whole run, which is faster; compare the note quality before using it for the demo. The verifier and
+speaker labelling always run with thinking off, because they only need a short JSON answer.
 
 The result prints to the terminal and is saved to `out/<input name>.result.json`.
 
@@ -144,25 +150,27 @@ doctor and which is the patient from what they say, and the result carries the l
 `transcript` with timestamps, plus `timings` for the metrics bar.
 
 **Is Lightning up?** `check_server.sh` lists the served models, sends a test message and
-tests tool calling. On the event ATOMs Lightning is served through Emarque's *switchyard* router
-on `127.0.0.1:9010` (and `:9011`), model id `lightning` (also `nano`, and `auto` which routes
-between them). Port 8000 is **not** the model on our ATOM: another service answers there with
-HTTP 500. To check by hand:
+tests tool calling. On the event ATOMs, the hackathon kit serves Lightning with vLLM on
+`127.0.0.1:9000`, model id `lightning`. Port 8000 is **not** the model on our ATOM: another service
+answers there with HTTP 500. If the model isn't up, start the kit's Lightning (takes ~5-10 min the
+first time, ~37 GiB):
 
 ```bash
-curl -s http://127.0.0.1:9010/v1/models
-curl -s http://127.0.0.1:9010/v1/chat/completions -H 'Content-Type: application/json' \
+demo kit-status      # is lightning :9000 ticked?
+demo kit-up          # start Lightning only (no argument)
+curl -s http://127.0.0.1:9000/v1/models
+curl -s http://127.0.0.1:9000/v1/chat/completions -H 'Content-Type: application/json' \
   -d '{"model":"lightning","max_tokens":64,"messages":[{"role":"user","content":"Say OK"}]}'
-ss -ltnp | grep -E '9010|9011'               # if refused: is switchyard running?
 ```
 
-The organisers run the model service. Per the event guide, do not start a second vLLM process
-or stop services that other people are running. If it is down, ask the EMARQUE mentors.
+`demo kit-up switchyard` also starts Nano, Omni and the switchyard router on `:9010`; set
+`LLM_BASE_URL=http://127.0.0.1:9010/v1` to go through it. Do not start your own vLLM, and do not
+stop services other people are running (`demo stop-all`, `down`, `reset`).
 
 **Different port or model name?** Everything is configurable:
 
 ```bash
-export LLM_BASE_URL=http://127.0.0.1:9010/v1   # default
+export LLM_BASE_URL=http://127.0.0.1:9000/v1   # default
 export LLM_MODEL=lightning                     # default: "lightning" if listed, else the first model
 export LLM_THINKING=0                          # optional: turn off reasoning for speed
 export LLM_MAX_TOKENS=8192                     # optional: raise if replies come back empty (default 4096)
@@ -174,7 +182,7 @@ export LLM_MAX_TOKENS=8192                     # optional: raise if replies come
 127.0.0.1, so forward it over SSH (same login NVIDIA Sync uses), then run the agent on your laptop:
 
 ```bash
-ssh -N -L 9010:127.0.0.1:9010 admin@<your-atom-hostname-or-ip>
+ssh -N -L 9000:127.0.0.1:9000 admin@<your-atom-hostname-or-ip>
 # in another terminal on the laptop:
 ./scripts/run_agent.sh samples/transcript_urti.json
 ```
