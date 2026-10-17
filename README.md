@@ -66,34 +66,38 @@ The result prints to the terminal and is saved to `out/<input name>.result.json`
 doctor and which is the patient from what they say, and the result carries the labelled
 `transcript` with timestamps, plus `timings` for the metrics bar.
 
-**Is the vLLM server up?** `check_server.sh` lists the served models, sends a test message and
-tests tool calling. To do it by hand:
+**Is Lightning up?** `check_server.sh` lists the served models, sends a test message and
+tests tool calling. On the event ATOMs Lightning is served through Emarque's *switchyard* router
+on `127.0.0.1:9010` (and `:9011`), model id `lightning` (also `nano`, and `auto` which routes
+between them). Port 8000 is **not** the model on our ATOM: another service answers there with
+HTTP 500. To check by hand:
 
 ```bash
-curl -s http://localhost:8000/v1/models     # JSON with "id" = the model name
-ps aux | grep -i vllm | grep -v grep        # if refused: is vLLM running, on which --port?
+curl -s http://127.0.0.1:9010/v1/models
+curl -s http://127.0.0.1:9010/v1/chat/completions -H 'Content-Type: application/json' \
+  -d '{"model":"lightning","max_tokens":64,"messages":[{"role":"user","content":"Say OK"}]}'
+ss -ltnp | grep -E '9010|9011'               # if refused: is switchyard running?
 ```
 
-The organisers run vLLM for you. Per the event guide, do not start a second vLLM process.
-If it is down or tool calling is off (it needs `--enable-auto-tool-choice --tool-call-parser ...`),
-ask the EMARQUE mentors.
+The organisers run the model service. Per the event guide, do not start a second vLLM process
+or stop services that other people are running. If it is down, ask the EMARQUE mentors.
 
 **Different port or model name?** Everything is configurable:
 
 ```bash
-export LLM_BASE_URL=http://localhost:8000/v1   # default
-export LLM_MODEL=<id from /v1/models>          # default: first model the server lists
+export LLM_BASE_URL=http://127.0.0.1:9010/v1   # default
+export LLM_MODEL=lightning                     # default: "lightning" if listed, else the first model
 export LLM_THINKING=0                          # optional: turn off reasoning for speed
 export LLM_MAX_TOKENS=8192                     # optional: raise if replies come back empty (default 4096)
 ./scripts/run_agent.sh samples/transcript_urti.json
 # or: python3 -m agent my_visit.json --base-url ... --model ... --no-verify
 ```
 
-**Running from your laptop instead of the ATOM.** The model port is only open on the ATOM, so
-forward it over SSH (same login NVIDIA Sync uses), then run the agent on your laptop:
+**Running from your laptop instead of the ATOM.** The model port only listens on the ATOM's
+127.0.0.1, so forward it over SSH (same login NVIDIA Sync uses), then run the agent on your laptop:
 
 ```bash
-ssh -N -L 8000:localhost:8000 admin@<your-atom-hostname>.local
+ssh -N -L 9010:127.0.0.1:9010 admin@<your-atom-hostname-or-ip>
 # in another terminal on the laptop:
 ./scripts/run_agent.sh samples/transcript_urti.json
 ```

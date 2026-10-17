@@ -29,8 +29,8 @@ def load_input(path):
 def main():
     ap = argparse.ArgumentParser(prog="python3 -m agent", description="Summarise a consultation transcript with Lightning")
     ap.add_argument("input", help="Transcript .txt, visit .json, or diarized .json (first-layer output)")
-    ap.add_argument("--base-url", help="OpenAI-compatible base URL (default $LLM_BASE_URL or http://localhost:8000/v1)")
-    ap.add_argument("--model", help="Model id (default $LLM_MODEL, else the first model the server lists)")
+    ap.add_argument("--base-url", help="OpenAI-compatible base URL (default $LLM_BASE_URL or http://127.0.0.1:9010/v1)")
+    ap.add_argument("--model", help="Model id (default $LLM_MODEL, else \"lightning\" if served, else the first model)")
     ap.add_argument("--no-verify", action="store_true", help="Skip the verifier pass")
     ap.add_argument("--out", help="Also write the JSON result to this file")
     args = ap.parse_args()

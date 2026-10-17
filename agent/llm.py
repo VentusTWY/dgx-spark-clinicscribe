@@ -10,7 +10,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-DEFAULT_BASE_URL = "http://localhost:8000/v1"
+# The event's ATOM serves Lightning through Emarque's switchyard router on 9010
+# (port 8000 is taken by another service there).
+DEFAULT_BASE_URL = "http://127.0.0.1:9010/v1"
+PREFERRED_MODEL = "lightning"
 
 
 class LLMError(RuntimeError):
@@ -52,12 +55,12 @@ class LLMClient:
 
     @property
     def model(self):
-        # If no model name is configured, use whatever the server is serving.
+        # If no model name is configured, prefer "lightning", else the first one served.
         if not self._model:
             models = self.list_models()
             if not models:
                 raise LLMError("Server reports no models at /models")
-            self._model = models[0]
+            self._model = PREFERRED_MODEL if PREFERRED_MODEL in models else models[0]
         return self._model
 
     def chat(self, messages, tools=None, temperature=0.2, max_tokens=None, json_mode=False):
