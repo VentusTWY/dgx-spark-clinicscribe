@@ -1,0 +1,118 @@
+{
+  "wav": "consult_urti_mc3.wav",
+  "total_duration": 100.1,
+  "segments": [
+    {
+      "speaker": 1,
+      "start": 1.0,
+      "end": 4.5,
+      "text": "Good morning, Encik Ahmad. What brings you in today?"
+    },
+    {
+      "speaker": 0,
+      "start": 5.1,
+      "end": 12.4,
+      "text": "Morning doctor. I've had a sore throat and fever since two days ago. Also coughing, a bit of phlegm."
+    },
+    {
+      "speaker": 1,
+      "start": 13.0,
+      "end": 14.9,
+      "text": "Any runny nose? Body aches?"
+    },
+    {
+      "speaker": 0,
+      "start": 15.5,
+      "end": 22.4,
+      "text": "Yes, runny nose, and my whole body is aching. I took Panadol at home, it helps a bit."
+    },
+    {
+      "speaker": 1,
+      "start": 23.0,
+      "end": 25.7,
+      "text": "Any shortness of breath or chest pain?"
+    },
+    {
+      "speaker": 0,
+      "start": 26.3,
+      "end": 27.8,
+      "text": "No, nothing like that."
+    },
+    {
+      "speaker": 1,
+      "start": 28.4,
+      "end": 30.7,
+      "text": "Do you have any drug allergies?"
+    },
+    {
+      "speaker": 0,
+      "start": 31.3,
+      "end": 34.4,
+      "text": "Yes, penicillin. I got a rash last time."
+    },
+    {
+      "speaker": 1,
+      "start": 35.0,
+      "end": 38.1,
+      "text": "Okay, noted. Any long-term illness or regular medication?"
+    },
+    {
+      "speaker": 0,
+      "start": 38.7,
+      "end": 40.2,
+      "text": "No, I'm healthy otherwise."
+    },
+    {
+      "speaker": 1,
+      "start": 40.8,
+      "end": 50.8,
+      "text": "Let me check you. Temperature is 38.2. Throat is red, tonsils are slightly enlarged but no pus. Lungs are clear. Pulse 92, BP 124 over 78."
+    },
+    {
+      "speaker": 1,
+      "start": 51.4,
+      "end": 70.2,
+      "text": "This looks like a viral upper respiratory tract infection. You don't need antibiotics for now. I'll give you paracetamol 1 gram four times a day as needed for fever, cetirizine 10 milligrams at night for the runny nose, and bromhexine 8 milligrams three times a day for the phlegm."
+    },
+    {
+      "speaker": 0,
+      "start": 70.8,
+      "end": 77.0,
+      "text": "Doctor, can I get MC? I work at the factory, I can't go in like this."
+    },
+    {
+      "speaker": 1,
+      "start": 77.6,
+      "end": 84.1,
+      "text": "Yes, I'll give you MC for three days, today until Monday. Drink plenty of water and rest."
+    },
+    {
+      "speaker": 1,
+      "start": 84.7,
+      "end": 92.0,
+      "text": "If the fever goes above 39, or you get breathless, or it's not better in 3 days, come back."
+    },
+    {
+      "speaker": 0,
+      "start": 92.6,
+      "end": 96.4,
+      "text": "Okay doctor. I'm under the AIA panel from my company."
+    },
+    {
+      "speaker": 1,
+      "start": 97.0,
+      "end": 98.5,
+      "text": "Alright, we'll bill AIA."
+    }
+  ],
+  "patient": {
+    "name": "Ahmad bin Ismail",
+    "age": 34,
+    "sex": "M",
+    "allergies": [
+      "penicillin"
+    ],
+    "panel_id": "PANEL-AIA"
+  },
+  "visit_date": "2026-10-17"
+}

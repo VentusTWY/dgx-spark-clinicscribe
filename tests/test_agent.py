@@ -45,6 +45,8 @@ class FakeVLLM(BaseHTTPRequestHandler):
     step = 0
     tools_supported = True
     roles_answer = {"1": "Doctor", "0": "Patient"}
+    verifier_empty = 0  # how many verifier calls answer with empty content
+    verifier_requests = []
 
     def log_message(self, *a):
         pass
@@ -65,7 +67,12 @@ class FakeVLLM(BaseHTTPRequestHandler):
             return self._send(400, {"error": "auto tool choice requires --enable-auto-tool-choice"})
         if req["messages"][0]["content"].startswith("These are diarized turns"):
             msg = {"role": "assistant", "content": json.dumps(FakeVLLM.roles_answer)}
+        elif req["messages"][0]["content"].startswith("You are a strict") and FakeVLLM.verifier_empty > 0:
+            FakeVLLM.verifier_requests.append(req)
+            FakeVLLM.verifier_empty -= 1
+            msg = {"role": "assistant", "content": None, "reasoning_content": "thinking..."}
         elif req["messages"][0]["content"].startswith("You are a strict"):
+            FakeVLLM.verifier_requests.append(req)
             msg = {"role": "assistant", "content": "<think>checking</think>```json\n" + json.dumps(VERIFIER) + "\n```"}
         elif not req.get("tools"):
             msg = {"role": "assistant", "content": json.dumps({"subjective": "s", "objective": "o", "assessment": "a", "plan": "p"})}
@@ -92,6 +99,8 @@ class AgentTest(unittest.TestCase):
         FakeVLLM.step = 0
         FakeVLLM.tools_supported = True
         FakeVLLM.roles_answer = {"1": "Doctor", "0": "Patient"}
+        FakeVLLM.verifier_empty = 0
+        FakeVLLM.verifier_requests = []
         self.transcript, self.patient, self.visit_date = load_input(ROOT / "samples" / "transcript_urti.json")
 
     def run_it(self):
@@ -117,6 +126,16 @@ class AgentTest(unittest.TestCase):
         self.assertIn("exceeds AIA Corporate Panel limit", messages)
         self.assertFalse(out["verification"]["passed"])
         json.dumps(out)  # must be serialisable
+
+    def test_verifier_runs_without_thinking_and_retries_empty_answers(self):
+        FakeVLLM.verifier_empty = 2
+        out = self.run_it()
+        self.assertEqual(out["verification"]["unsupported"], ["Augmentin was not prescribed"])
+        first, last = FakeVLLM.verifier_requests[0], FakeVLLM.verifier_requests[-1]
+        self.assertEqual(first["chat_template_kwargs"], {"enable_thinking": False})
+        self.assertEqual(first["response_format"], {"type": "json_object"})
+        self.assertNotIn("chat_template_kwargs", last)  # last resort: thinking on, more tokens
+        self.assertEqual(last["max_tokens"], 8192)
 
     def test_falls_back_without_tool_calling(self):
         FakeVLLM.tools_supported = False

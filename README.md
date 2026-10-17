@@ -56,7 +56,13 @@ cd dgx-spark-clinicscribe
 ./scripts/check_server.sh                         # 1. is Lightning up? does tool calling work?
 ./scripts/run_agent.sh samples/transcript_urti.json   # 2. run the agent on the sample visit
 ./scripts/run_agent.sh samples/diarized_urti.json     # 3. same visit as diarization + ASR output
+./scripts/run_agent.sh samples/diarized_hero_aia.json # 4. demo case: 3-day MC on AIA (limit 2) gets flagged
 ```
+
+Measured on our ATOM (EMARQUE-DGX-H): the 100 s sample consult takes about 64 s through the agent
+with Lightning thinking on (6.3k completion tokens). `LLM_THINKING=0` turns reasoning off for the
+whole run, which is faster; compare the note quality before using it for the demo. The verifier and
+speaker labelling always run with thinking off, because they only need a short JSON answer.
 
 The result prints to the terminal and is saved to `out/<input name>.result.json`.
 

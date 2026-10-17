@@ -14,7 +14,7 @@ import re
 import time
 
 from .agent import run_agent
-from .llm import LLMClient, LLMError, parse_json_loose
+from .llm import LLMClient, LLMError
 
 SEGMENT_LIST_KEYS = ("segments", "breakdown", "turns", "utterances", "results")
 ROLES = ("Doctor", "Patient", "Nurse", "Caregiver", "Other")
@@ -114,8 +114,7 @@ def label_speakers(client, segments):
     fallback = heuristic_roles(segments)
     lines = "\n".join(f"[speaker {s['speaker_id']}] {s['text']}" for s in segments[:60])
     try:
-        msg = client.chat([{"role": "system", "content": ROLE_PROMPT}, {"role": "user", "content": lines}], temperature=0.0)
-        answer = parse_json_loose(msg.get("content"))
+        answer = client.chat_json([{"role": "system", "content": ROLE_PROMPT}, {"role": "user", "content": lines}])
         roles = {_speaker_id(k): v for k, v in answer.items() if v in ROLES}
     except (LLMError, ValueError, AttributeError):
         return fallback, "heuristic"
