@@ -22,6 +22,9 @@ class LLMClient:
         self.api_key = api_key or os.environ.get("LLM_API_KEY") or "EMPTY"
         self.timeout = timeout
         self._model = model or os.environ.get("LLM_MODEL")
+        # Reasoning tokens count against max_tokens; raise it if content comes back empty.
+        self.max_tokens = int(os.environ.get("LLM_MAX_TOKENS", "4096"))
+        self.completion_tokens = 0
 
     def _request(self, method, path, body=None):
         data = json.dumps(body).encode() if body is not None else None
@@ -52,12 +55,12 @@ class LLMClient:
             self._model = models[0]
         return self._model
 
-    def chat(self, messages, tools=None, temperature=0.2, max_tokens=2048, json_mode=False):
+    def chat(self, messages, tools=None, temperature=0.2, max_tokens=None, json_mode=False):
         body = {
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": max_tokens,
+            "max_tokens": max_tokens or self.max_tokens,
         }
         if tools:
             body["tools"] = tools
@@ -68,6 +71,7 @@ class LLMClient:
         if os.environ.get("LLM_THINKING") == "0":
             body["chat_template_kwargs"] = {"enable_thinking": False}
         resp = self._request("POST", "/chat/completions", body)
+        self.completion_tokens += (resp.get("usage") or {}).get("completion_tokens", 0)
         try:
             return resp["choices"][0]["message"]
         except (KeyError, IndexError) as e:

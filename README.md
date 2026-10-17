@@ -55,9 +55,16 @@ cd dgx-spark-clinicscribe
 
 ./scripts/check_server.sh                         # 1. is Lightning up? does tool calling work?
 ./scripts/run_agent.sh samples/transcript_urti.json   # 2. run the agent on the sample visit
+./scripts/run_agent.sh samples/diarized_urti.json     # 3. same visit as diarization + ASR output
 ```
 
-The result prints to the terminal and is saved to `out/transcript_urti.result.json`.
+The result prints to the terminal and is saved to `out/<input name>.result.json`.
+
+**Feeding it the diarization + ASR output.** Give the agent the first layer's JSON as is
+(`wav`, `total_duration`, and per segment `speaker` 0-8, `start`, `end`, `text`; see
+[samples/diarized_urti.json](samples/diarized_urti.json)). Lightning works out which speaker id is the
+doctor and which is the patient from what they say, and the result carries the labelled
+`transcript` with timestamps, plus `timings` for the metrics bar.
 
 **Is the vLLM server up?** `check_server.sh` lists the served models, sends a test message and
 tests tool calling. To do it by hand:
@@ -77,6 +84,7 @@ ask the EMARQUE mentors.
 export LLM_BASE_URL=http://localhost:8000/v1   # default
 export LLM_MODEL=<id from /v1/models>          # default: first model the server lists
 export LLM_THINKING=0                          # optional: turn off reasoning for speed
+export LLM_MAX_TOKENS=8192                     # optional: raise if replies come back empty (default 4096)
 ./scripts/run_agent.sh samples/transcript_urti.json
 # or: python3 -m agent my_visit.json --base-url ... --model ... --no-verify
 ```
@@ -95,8 +103,9 @@ Running on the ATOM itself is simpler and is what the judges want to see.
 ### Use it from Python (e.g. the web UI)
 
 ```python
-from agent import run_agent
+from agent import run_agent, run_agent_on_segments
 result = run_agent(transcript_text, patient={"name": "...", "allergies": ["penicillin"], "panel_id": "PANEL-AIA"})
+result = run_agent_on_segments(first_layer_json, patient={...})   # diarized segments in, roles mapped
 ```
 
 The output shape is documented in [docs/agent_contract.md](docs/agent_contract.md); a full
@@ -118,6 +127,7 @@ calls Lightning would make.
 | `agent/llm.py` | OpenAI-compatible client for vLLM (stdlib only) |
 | `agent/tools.py` | Tool schemas and implementations |
 | `agent/agent.py` | Agent loop, verifier, output assembly |
+| `agent/segments.py` | Diarized input: loader, Doctor/Patient role mapping, timings |
 | `data/formulary.json`, `data/panels.json` | Synthetic demo formulary and panel rules |
 | `samples/` | Sample transcript, visit input and output |
 | `scripts/check_server.sh`, `scripts/run_agent.sh` | One-command server check and run |
