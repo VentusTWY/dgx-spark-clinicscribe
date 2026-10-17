@@ -4,18 +4,53 @@ A GP consultation goes in as a transcript. Out comes a SOAP note, checked prescr
 drafted MC and the panel billing rules, all produced by NVIDIA Nemotron 3.5 Lightning running
 locally on the team's GIGABYTE AI TOP ATOM. No patient data leaves the clinic.
 
-## Demo UI
+## Run the demo (API + UI, fully offline)
+
+On the ATOM, with Lightning already up (`demo kit-up`):
 
 ```bash
-pip install fastapi uvicorn
-python serve_ui.py        # http://localhost:8080
+pip install fastapi uvicorn      # once, while online
+./scripts/start_demo.sh          # http://localhost:8080
 ```
 
-A single dark page for the projector: upload consults (or load the demo batch), watch each
-job's speaker turns light up through diarization → ASR → Lightning, then review the transcript,
-SOAP note, tool-call feed, flags, prescriptions and MC, and approve. It runs on built-in mock
-data until the backend answers `GET /jobs`, then switches to live. No CDN assets, so it works
-with Wi-Fi off. Details and the HTTP contract: [ui/README.md](ui/README.md).
+`start_demo.sh` checks Lightning on `127.0.0.1:9000`, then serves the `/jobs` API and the UI from
+one process (`python3 -m server`). The badge in the top right turns **LIVE**. Open the page in the
+ATOM's own browser, or from a laptop on the same network at `http://<atom-ip>:8080`. Nothing in the
+page or the backend touches the internet, so Wi-Fi can be off.
+
+**What you can upload**
+
+| Upload | What happens |
+|---|---|
+| First-layer JSON (`wav`, `total_duration`, `segments[{speaker, start, end, text}]`) | Goes straight to the Lightning agent. Try `samples/diarized_urti.json`. |
+| Audio (`.wav` etc.) with `STT_URL` or `STT_CMD` set | The first layer (diarization + ASR) runs on it, then the agent. |
+| Audio with neither set | Uses a cached first-layer JSON with the same name from `samples/` (`<name>.json` or `diarized_<name>.json`). |
+
+Hooking up the first layer (pick one):
+
+```bash
+STT_URL=http://127.0.0.1:PORT/transcribe ./scripts/start_demo.sh                # POST multipart "file", JSON back
+STT_CMD='python3 ~/Documents/async_stt/run.py {audio}' ./scripts/start_demo.sh   # JSON on stdout
+STT_CMD='... {audio} --out {out}' ./scripts/start_demo.sh                        # or JSON written to {out}
+```
+
+Don't quote `{audio}` or `{out}`; the backend quotes them. Patient details (panel, allergies) come
+from the JSON's `patient`, or from [samples/patients.json](samples/patients.json) by file name.
+
+**Demo safety net.** Every finished job is saved to `out/<name>.result.json`. If Lightning fails
+during the demo, a job whose file was run before serves that saved result instead
+(`meta.cached: true`). So run each demo file once before going on stage.
+
+**Demo steps (Wi-Fi off)**
+
+1. Before: `demo kit-up`, wait until `curl -s 127.0.0.1:9000/v1/models` lists `lightning`.
+2. `./scripts/start_demo.sh`, open `http://localhost:8080`, check the badge says LIVE.
+3. Drop the hero consult; walk through transcript, tool calls, the MC flag, Approve.
+4. Drop the batch of short files at once to show the queue and the metrics bar.
+
+`GET /health` shows whether Lightning answers and which first layer is configured.
+The UI on its own (mock data, no backend) still runs with `python serve_ui.py`; see
+[ui/README.md](ui/README.md) for the HTTP contract.
 
 ## The agent stage (transcript → visit record)
 
