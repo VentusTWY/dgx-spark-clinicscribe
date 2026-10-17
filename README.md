@@ -4,6 +4,19 @@ A GP consultation goes in as a transcript. Out comes a SOAP note, checked prescr
 drafted MC and the panel billing rules, all produced by NVIDIA Nemotron 3.5 Lightning running
 locally on the team's GIGABYTE AI TOP ATOM. No patient data leaves the clinic.
 
+## Demo UI
+
+```bash
+pip install fastapi uvicorn
+python serve_ui.py        # http://localhost:8080
+```
+
+A single dark page for the projector: upload consults (or load the demo batch), watch each
+job's speaker turns light up through diarization → ASR → Lightning, then review the transcript,
+SOAP note, tool-call feed, flags, prescriptions and MC, and approve. It runs on built-in mock
+data until the backend answers `GET /jobs`, then switches to live. No CDN assets, so it works
+with Wi-Fi off. Details and the HTTP contract: [ui/README.md](ui/README.md).
+
 ## The agent stage (transcript → visit record)
 
 ### How it works
