@@ -10,9 +10,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-# The event's ATOM serves Lightning through Emarque's switchyard router on 9010
-# (port 8000 is taken by another service there).
-DEFAULT_BASE_URL = "http://127.0.0.1:9010/v1"
+# On the event ATOM, `demo kit-up` serves Lightning with vLLM on 9000. The
+# switchyard router on 9010 only runs with `demo kit-up switchyard`, and
+# port 8000 belongs to another service there.
+DEFAULT_BASE_URL = "http://127.0.0.1:9000/v1"
 PREFERRED_MODEL = "lightning"
 
 
