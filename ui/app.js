@@ -49,6 +49,8 @@
       verification: r.verification || null,
       tool_calls,
       timings,
+      // Served from out/<stem>.result.json because Lightning failed: not a measurement of this run.
+      cached: !!r.meta?.cached,
     };
   }
   const isAlert = (f) => f.verified && f.severity !== "info";
@@ -83,13 +85,22 @@
   const dz = $("dropzone");
   const input = $("fileInput");
   async function uploadFiles(files) {
-    for (const f of files) {
+    const entries = files.map((f) => track({ filename: f.name, uploadPct: 0 }));
+    openOverlay();
+    for (const [i, f] of files.entries()) {
+      const entry = entries[i];
+      entry.uploading = true;
+      entry.startedAt = Date.now();
       try {
-        const { job_id } = await api.upload(f);
+        const { job_id } = await api.upload(f, (pct) => { entry.uploadPct = pct; renderOverlay(); });
+        entry.jobId = job_id;
         if (!selectedId) selectedId = job_id;
-      } catch (e) { alert(`Upload failed for ${f.name}: ${e.message}`); }
+      } catch (e) {
+        entry.error = `Upload failed: ${e.message}`;
+      }
+      entry.uploading = false;
+      refresh();
     }
-    refresh();
   }
   input.addEventListener("change", () => { uploadFiles([...input.files]); input.value = ""; });
   ["dragenter", "dragover"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add("over"); }));
@@ -98,6 +109,8 @@
   $("demoBtn").addEventListener("click", async () => {
     const ids = await api.loadDemoBatch(10);
     if (!selectedId) selectedId = ids[0];
+    ids.forEach((id, i) => track({ jobId: id, filename: window.MOCK_CONSULTS[i === 0 ? 0 : 1 + ((i - 1) % (window.MOCK_CONSULTS.length - 1))].name, startedAt: Date.now() }));
+    openOverlay();
     refresh();
   });
 
@@ -106,6 +119,120 @@
     await api.approve(selectedId);
     refresh();
   });
+
+  // ---------- processing window ----------
+  // Opens on upload and follows each uploaded job through the real job status from the API:
+  // upload progress, queue, diarization + ASR (turn count when the first layer reports turns),
+  // the Lightning agent, then done. Hiding it keeps the jobs running.
+  let tracked = [];
+  let overlayOpen = false;
+  let closeTimer = null;
+  const track = (entry) => { tracked.push(entry); return entry; };
+  function openOverlay() {
+    overlayOpen = true;
+    clearTimeout(closeTimer);
+    $("procOverlay").classList.remove("hidden");
+    $("procShow").classList.add("hidden");
+    renderOverlay();
+  }
+  function hideOverlay() {
+    overlayOpen = false;
+    $("procOverlay").classList.add("hidden");
+    $("procShow").classList.toggle("hidden", !tracked.length);
+  }
+  $("procHide").addEventListener("click", hideOverlay);
+  $("procShow").addEventListener("click", openOverlay);
+  $("procOverlay").addEventListener("click", (e) => {
+    if (e.target.id === "procOverlay") return hideOverlay();
+    const btn = e.target.closest("[data-open]");
+    if (!btn) return;
+    selectedId = btn.dataset.open;
+    detailKey = "";
+    hideOverlay();
+    renderJobs();
+    renderDetail();
+  });
+  document.addEventListener("keydown", (e) => e.key === "Escape" && overlayOpen && hideOverlay());
+
+  const PROC_STEPS = [["upload", "Upload"], ["first", "Diarization + ASR"], ["agent", "Lightning agent"], ["done", "Done"]];
+  function procState(entry) {
+    const j = entry.jobId && jobs.find((x) => x.job_id === entry.jobId);
+    if (entry.error) return { step: "upload", failed: true, label: entry.error };
+    if (!entry.jobId) {
+      return entry.uploading
+        ? { step: "upload", pct: entry.uploadPct, label: `Uploading ${Math.round(entry.uploadPct)}%` }
+        : { step: "upload", pct: 0, label: "Waiting to upload" };
+    }
+    if (!j) return { step: "first", label: "Starting…" };
+    const doneTurns = j.turns.filter((t) => t.done).length;
+    const last = [...j.turns].reverse().find((t) => t.done && t.text);
+    const line = last ? `${last.speaker}: ${last.text}` : "";
+    switch (j.status) {
+      case "queued":
+        return { step: "first", label: "Waiting in the queue" };
+      case "diarizing":
+        return { step: "first", label: "Finding who speaks when and transcribing" };
+      case "transcribing":
+        return j.turns.length
+          ? { step: "first", pct: (100 * doneTurns) / j.turns.length, label: `Transcribed ${doneTurns} of ${j.turns.length} speaker turns`, line }
+          : { step: "first", label: "Transcribing" };
+      case "summarising":
+        return { step: "agent", label: "Lightning is writing the SOAP note and checking drugs, MC and panel rules", line: j.turns.length ? `${j.turns.length} turns transcribed` : "" };
+      case "done": {
+        const t = j.result?.timings || {};
+        return { step: "done", pct: 100, label: `Done in ${fmtSecs(t.total_s ?? (j.finished_at - j.created_at))}${j.result?.cached ? " (cached result)" : ""}`, open: j.job_id };
+      }
+      case "failed":
+        return { step: "first", failed: true, label: j.error || "Failed" };
+      default:
+        return { step: "first", label: j.status };
+    }
+  }
+
+  function renderOverlay() {
+    if (!tracked.length) return;
+    const states = tracked.map(procState);
+    const finished = states.filter((st) => st.step === "done" || st.failed).length;
+    $("procTitle").textContent = finished === tracked.length
+      ? `Finished ${tracked.length} consult${tracked.length > 1 ? "s" : ""}`
+      : `Processing ${tracked.length - finished} of ${tracked.length} consult${tracked.length > 1 ? "s" : ""}`;
+    $("procShow").textContent = finished === tracked.length ? "Show processing results" : `Show processing (${tracked.length - finished} running)`;
+    $("procNote").textContent = api.kind === "mock"
+      ? "Mock data: this run is simulated in the browser."
+      : "Live: every stage runs on the ATOM. You can hide this window; jobs keep running.";
+    if (!overlayOpen) return;
+    $("procList").innerHTML = tracked.map((entry, i) => {
+      const st = states[i];
+      const idx = PROC_STEPS.findIndex(([k]) => k === st.step);
+      const steps = PROC_STEPS.map(([k, label], n) =>
+        `<span class="proc-step ${n < idx || st.step === "done" ? "complete" : n === idx && !st.failed ? "active" : ""}">${label}</span>`).join("");
+      const elapsedS = entry.startedAt ? (Date.now() - entry.startedAt) / 1000 : 0;
+      const elapsed = st.step === "done" || st.failed ? "" : entry.startedAt ? fmtSecs(elapsedS) : "";
+      const determinate = st.pct != null;
+      return `<li class="proc-item${st.failed ? " failed" : ""}">
+        <div class="proc-top"><span class="proc-name">${esc(jobs.find((x) => x.job_id === entry.jobId)?.filename || entry.filename)}</span><span class="proc-elapsed">${elapsed}</span></div>
+        <div class="proc-steps">${steps}</div>
+        <div class="proc-bar${determinate || st.failed ? "" : " indeterminate"}"><div class="proc-fill" style="width:${st.failed ? 100 : determinate ? st.pct : 35}%"></div></div>
+        <div class="proc-label">${st.failed ? `<span class="err">${esc(st.label)}</span>` : esc(st.label)}</div>
+        ${st.line ? `<div class="proc-line">${esc(st.line)}</div>` : ""}
+        ${st.open ? `<button class="btn secondary proc-open" data-open="${esc(st.open)}">Open result</button>` : ""}
+      </li>`;
+    }).join("");
+    // When everything has finished, show the result for a moment, then open the first finished job.
+    if (finished === tracked.length && !closeTimer) {
+      closeTimer = setTimeout(() => {
+        const first = states.find((st) => st.open);
+        if (overlayOpen && first) {
+          selectedId = first.open;
+          detailKey = "";
+          hideOverlay();
+          renderJobs();
+          renderDetail();
+        }
+      }, 2500);
+    }
+    if (finished < tracked.length) { clearTimeout(closeTimer); closeTimer = null; }
+  }
 
   // ---------- job list ----------
   function renderJobs() {
@@ -154,22 +281,38 @@
   });
 
   // ---------- metrics ----------
+  // Every number here comes from the API: server timestamps, the first layer's audio length and the
+  // agent's own timings (agent_s, completion tokens from vLLM's usage field). Cached fallback results
+  // are left out, since they were not produced by this run.
+  function busySeconds(intervals) {
+    // Wall time while at least one job was in flight, so idle gaps between uploads don't count.
+    const sorted = intervals.filter(([a, b]) => b > a).sort((x, y) => x[0] - y[0]);
+    let total = 0, curA = null, curB = null;
+    for (const [a, b] of sorted) {
+      if (curB == null || a > curB) { if (curB != null) total += curB - curA; curA = a; curB = b; }
+      else curB = Math.max(curB, b);
+    }
+    return curB == null ? 0 : total + (curB - curA);
+  }
+
   function renderMetrics() {
     const done = jobs.filter((j) => j.status === "done" && j.result);
-    const audio = done.reduce((a, j) => a + (j.result.timings.audio_s || 0), 0);
-    const start = Math.min(...jobs.map((j) => j.created_at));
-    const running = jobs.some((j) => j.status !== "done" && j.status !== "failed");
-    const end = running ? Date.now() / 1000 : Math.max(...jobs.map((j) => j.finished_at || j.created_at));
-    const wall = jobs.length ? Math.max(0, end - start) : 0;
-    const tokens = done.reduce((a, j) => a + (j.result.timings.llm_tokens || 0), 0);
-    const agentS = done.reduce((a, j) => a + (j.result.timings.agent_s || 0), 0);
+    const measured = done.filter((j) => !j.result.cached);
+    const audio = measured.reduce((a, j) => a + (j.result.timings.audio_s || 0), 0);
+    const nowS = Date.now() / 1000;
+    const wall = busySeconds(jobs
+      .filter((j) => !(j.result && j.result.cached) && j.status !== "failed")
+      .map((j) => [j.created_at, j.finished_at || nowS]));
+    const doneWall = busySeconds(measured.map((j) => [j.created_at, j.finished_at]));
+    const tokens = measured.reduce((a, j) => a + (j.result.timings.llm_tokens || 0), 0);
+    const agentS = measured.reduce((a, j) => a + (j.result.timings.agent_s || 0), 0);
 
     $("mAudio").textContent = (audio / 60).toFixed(1);
     $("mWall").textContent = fmtSecs(wall);
-    // Seconds of processing per minute of audio, plus the real-time factor underneath.
-    const perMin = audio && wall ? (60 * wall) / audio : null;
+    // Seconds of processing per minute of audio (finished jobs only), plus the real-time factor underneath.
+    const perMin = audio && doneWall ? (60 * doneWall) / audio : null;
     $("mRtf").textContent = perMin == null ? "–" : perMin < 10 ? `${perMin.toFixed(1)} s` : `${Math.round(perMin)} s`;
-    $("mRtfX").textContent = perMin == null ? "" : `${(audio / wall).toFixed(0)}× faster than real time`;
+    $("mRtfX").textContent = perMin == null ? "" : `${(audio / doneWall).toFixed(0)}× faster than real time`;
     $("mTps").textContent = tokens && agentS ? Math.round(tokens / agentS).toString() : "–";
     $("mJobs").textContent = `${done.length} / ${jobs.length}`;
   }
@@ -183,10 +326,12 @@
       const idx = i + 1;
       const cls = idx < cur || j.status === "done" ? "complete" : idx === cur ? "active" : "";
       let label = STAGE_LABEL[s];
+      if (s === "diarizing" && t && t.diarization_s == null && t.asr_s != null) return null;
+      if (s === "transcribing" && t && t.diarization_s == null && t.asr_s != null) label = "Diarization + ASR";
       if (s === "transcribing" && j.turns.length) label += ` ${j.turns.filter((x) => x.done).length}/${j.turns.length}`;
       if (secs[s] != null) label += ` · ${secs[s].toFixed(1)} s`;
       return `<span class="stage ${cls}">${esc(label)}</span>`;
-    }).join('<span class="stage-arrow">→</span>') + (j.status === "failed" ? `<span class="status failed">failed: ${esc(j.error)}</span>` : "");
+    }).filter(Boolean).join('<span class="stage-arrow">→</span>') + (j.status === "failed" ? `<span class="status failed">failed: ${esc(j.error)}</span>` : "");
   }
 
   function renderTranscript(j) {
@@ -200,7 +345,7 @@
 
   const FLAG_LABEL = { critical: "CRITICAL", warning: "FLAG", info: "NOTE" };
   function renderChecks(r) {
-    $("dBanner").innerHTML = r.flags.filter(isAlert)
+    $("dBanner").innerHTML = (r.cached ? '<span class="cached-pill">Cached result from an earlier run: Lightning was unavailable</span>' : "") + r.flags.filter(isAlert)
       .map((f) => `<span class="pill ${esc(f.severity)}"><b>⚑ ${FLAG_LABEL[f.severity] || "FLAG"}</b>${esc(f.issue)}</span>`).join("");
     const flags = r.flags.map((f) => `<div class="flag-card ${esc(f.severity)}${f.verified ? "" : " unverified"}">
         <span class="verify">${f.verified ? esc(f.source || "verified") : "dropped by verifier"}</span>
@@ -348,6 +493,7 @@
       renderJobs();
       renderMetrics();
       renderDetail();
+      renderOverlay();
     } catch (e) {
       console.error("refresh failed", e);
     } finally {

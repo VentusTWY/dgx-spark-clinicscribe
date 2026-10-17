@@ -201,6 +201,38 @@ body {
 .timing .t { font-weight: 800; font-variant-numeric: tabular-nums; }
 .timing .l { color: var(--muted); font-size: 0.7rem; text-transform: uppercase; }
 
+/* Processing window */
+.overlay {
+  position: fixed; inset: 0; background: rgba(5, 8, 12, 0.72); display: flex;
+  align-items: center; justify-content: center; padding: 24px; z-index: 10;
+}
+.proc-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+  width: min(880px, 100%); max-height: 85vh; overflow: auto; padding: 22px 26px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+.proc-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+.proc-head h2 { margin: 0; font-size: 1.5rem; }
+.proc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.proc-item { background: var(--surface-2); border-radius: 12px; padding: 14px 16px; }
+.proc-top { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.proc-name { font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proc-elapsed { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.proc-steps { display: flex; gap: 6px; margin: 10px 0 8px; flex-wrap: wrap; }
+.proc-step { font-size: 0.78rem; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+.proc-step.active { border-color: var(--doctor); color: var(--doctor); }
+.proc-step.complete { border-color: #3c5a10; color: var(--accent); }
+.proc-bar { height: 10px; background: #0e141b; border-radius: 999px; overflow: hidden; position: relative; }
+.proc-fill { height: 100%; background: var(--accent); border-radius: 999px; transition: width .4s ease; }
+.proc-bar.indeterminate .proc-fill { width: 35% !important; position: absolute; animation: slide 1.4s ease-in-out infinite; }
+@keyframes slide { from { left: -35%; } to { left: 100%; } }
+.proc-item.failed .proc-fill { background: var(--red); }
+.proc-label { margin-top: 8px; font-size: 0.95rem; }
+.proc-label .err { color: var(--red); }
+.proc-line { margin-top: 4px; color: var(--muted); font-size: 0.85rem; font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proc-open { margin-top: 10px; padding: 8px 14px; font-size: 0.9rem; }
+.cached-pill { background: var(--surface-2); border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 6px 12px; font-weight: 700; }
+
 @media (max-width: 1200px) {
   :root { font-size: 16px; }
   .layout { grid-template-columns: 340px 1fr; }

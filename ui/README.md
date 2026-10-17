@@ -76,6 +76,22 @@ The UI polls `GET /jobs` once a second. A `Job` looks like:
 - Optional: `timings.llm_tokens` (completion tokens) powers the "Lightning tokens/s" metric.
 - `created_at` / `finished_at` (epoch seconds) drive the wall-time and real-time-factor metrics.
 
+## What the metrics bar measures
+
+In LIVE mode every number comes from the backend; nothing is estimated in the browser.
+
+| Metric | Source |
+|---|---|
+| Audio minutes processed | `result.timings.audio_s` (audio length from the first layer) of finished jobs |
+| Wall time | Server `created_at` → `finished_at`, counting only time when at least one job was in flight |
+| To process 1 min of audio | Busy wall time of finished jobs × 60 ÷ their audio seconds (and the real-time factor under it) |
+| Lightning tokens/s per consult | Completion tokens reported by vLLM's `usage` field ÷ `agent_s`, averaged over finished jobs. `agent_s` includes prompt processing, tool execution and the verifier pass, so this is lower than raw decode speed |
+| API cost | RM0: nothing leaves the ATOM |
+
+Results served from `out/<stem>.result.json` because Lightning failed (`meta.cached`) are marked in the
+detail view and left out of the metrics. The SOAP note "typing" is a replay of the finished note, not
+token streaming.
+
 ## Files
 
 - `index.html` – layout
