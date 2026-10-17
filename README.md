@@ -34,6 +34,7 @@ transcribes that turn.
 
 ```bash
 ./scripts/start_stt_gateway.sh   # copies the gateway into async_stt, starts it in env_edwin on 127.0.0.1:8100
+./scripts/test_stt_gateway.sh    # POSTs a wav (first 60 s of a sample), polls GET until the transcript is back
 ./scripts/start_demo.sh          # finds the gateway on :8100 and uses it for audio uploads
 ```
 
