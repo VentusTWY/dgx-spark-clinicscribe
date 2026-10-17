@@ -173,6 +173,19 @@ body {
 .flag-card .fix { color: #f1d9a6; font-size: 0.9rem; margin-top: 4px; }
 .flag-card.unverified { opacity: 0.55; border-style: dashed; }
 .flag-card .verify { font-size: 0.72rem; font-weight: 700; float: right; color: var(--amber); }
+.flag-card.critical { background: #3a1212; border-color: var(--red); }
+.flag-card.critical .flag-label, .flag-card.critical .verify { color: var(--red); }
+.flag-card.info { background: var(--surface-2); border-color: var(--border); }
+.flag-card.info .flag-label, .flag-card.info .verify { color: var(--muted); }
+.banner .pill.critical { background: #3a1212; border-color: var(--red); color: var(--red); }
+.ok-text { color: var(--accent); font-weight: 700; }
+.bad-text { color: var(--red); font-weight: 700; }
+.rx { border-left: 3px solid var(--accent); padding: 4px 10px; margin: 6px 0; font-size: 0.9rem; }
+.rx.warning { border-color: var(--amber); }
+.rx.danger { border-color: var(--red); }
+.rx.danger b { color: var(--red); }
+.rx-note { color: var(--muted); font-size: 0.82rem; }
+.rx-tag { font-size: 0.7rem; font-weight: 700; color: var(--amber); border: 1px solid var(--amber); border-radius: 999px; padding: 1px 6px; margin-left: 6px; }
 .ok-card { border: 1px solid #3c5a10; background: #14200a; color: var(--accent); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; font-weight: 700; }
 
 .kv { margin: 10px 0; }

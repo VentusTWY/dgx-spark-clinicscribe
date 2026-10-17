@@ -9,7 +9,7 @@ so it works with Wi-Fi off.
 
 ```bash
 pip install fastapi uvicorn
-python serve_ui.py        # http://localhost:8000
+python serve_ui.py        # http://localhost:8080 (port 8000 is vLLM's; set PORT to change)
 ```
 
 Opening `ui/index.html` directly from disk also works (mock data only).
@@ -25,7 +25,7 @@ Opening `ui/index.html` directly from disk also works (mock data only).
 | `/` (default)      | Real backend if `GET /jobs` answers with a list, else mock |
 
 The badge in the top right shows **MOCK DATA** or **LIVE**. The "Load demo batch" button only
-appears in mock mode; it queues the hero consult (3-day MC on Panel A, limit 2) plus 10 short files.
+appears in mock mode; it queues the hero consult (3-day MC on the AIA panel, limit 2) plus 10 short files.
 
 To serve the UI from the real backend, mount the folder after the API routes:
 
@@ -48,7 +48,7 @@ The UI polls `GET /jobs` once a second. A `Job` looks like:
 ```json
 {
   "job_id": "job_001",
-  "filename": "hero_consult_panelA.wav",
+  "filename": "hero_consult_aia.wav",
   "status": "transcribing",
   "audio_s": 164.0,
   "turns": [
@@ -66,9 +66,14 @@ The UI polls `GET /jobs` once a second. A `Job` looks like:
 - `status` is one of `queued`, `diarizing`, `transcribing`, `summarising`, `done`, `failed`.
 - `turns` is filled once diarization finishes; flip `done` and add `text` as each turn is transcribed.
   Each turn is one chip in the job list.
-- `result` is the output JSON contract from `CLAUDE.md` once `status == "done"`. `GET /jobs` may
-  leave it `null` to stay small; the UI then fetches `GET /jobs/{id}` for the selected job.
-- Optional: `result.timings.llm_tokens` (completion tokens) powers the "Lightning tokens/s" metric.
+- `result` is set once `status == "done"`: the agent output from `run_agent(...)`
+  ([docs/agent_contract.md](../docs/agent_contract.md)) with two keys the pipeline adds:
+  `transcript` (`[{speaker, start, end, text}]`, optional, else the UI uses `turns`) and
+  `timings` (`{diarization_s, asr_s, agent_s, total_s, audio_s, llm_tokens}`; `agent_s` falls back to
+  `meta.latency_ms`). The original `CLAUDE.md` contract shape is also accepted; `normalizeResult`
+  in `app.js` maps both. `GET /jobs` may leave `result` null to stay small; the UI then fetches
+  `GET /jobs/{id}` for the selected job.
+- Optional: `timings.llm_tokens` (completion tokens) powers the "Lightning tokens/s" metric.
 - `created_at` / `finished_at` (epoch seconds) drive the wall-time and real-time-factor metrics.
 
 ## Files
@@ -77,4 +82,4 @@ The UI polls `GET /jobs` once a second. A `Job` looks like:
 - `styles.css` – dark projector theme
 - `app.js` – polling, rendering, SOAP typewriter, metrics
 - `api.js` – `HttpApi` and `MockApi` (simulated queues: 2 diarization, 6 ASR, 6 agent slots)
-- `mock/consults.js` – four mock consults in the output contract
+- `mock/consults.js` – four mock consults (the hero in the agent's output shape)

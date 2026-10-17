@@ -15,7 +15,9 @@
 //   finished_at,                       // epoch seconds or null
 //   error,                             // string or null
 //   approved,                          // bool
-//   result                             // output JSON contract (CLAUDE.md) once status == done, else null
+//   result                             // once status == done, else null: the agent output
+//                                      // (docs/agent_contract.md) plus transcript and timings.
+//                                      // The CLAUDE.md contract shape is accepted too.
 // }
 // Optional extra in result.timings: llm_tokens (completion tokens) for the tokens/s metric.
 
@@ -65,7 +67,7 @@
       const consults = window.MOCK_CONSULTS;
       // The hero consult goes to files that look like it, otherwise round-robin.
       let idx = this.seq % consults.length;
-      if (/hero|panel\s*a/i.test(file.name)) idx = 0;
+      if (/hero|aia/i.test(file.name)) idx = 0;
       return this._create(file.name, consults[idx]);
     }
     async approve(id) {
@@ -142,22 +144,17 @@
         job.t.agent = now() - job.agentQueued;
         job.status = "done";
         job.finished_at = now();
-        const c = job.consult;
+        const { name, audio_s, llm_tokens, ...contract } = job.consult;
         job.result = {
           job_id: job.job_id,
-          transcript: c.transcript,
-          soap: c.soap,
-          mc: c.mc,
-          drug_alerts: c.drug_alerts,
-          flags: c.flags,
-          tool_calls: c.tool_calls,
+          ...contract,
           timings: {
             diarization_s: +job.t.diar.toFixed(2),
             asr_s: +job.t.asr.toFixed(2),
             agent_s: +job.t.agent.toFixed(2),
             total_s: +(job.finished_at - job.created_at).toFixed(2),
-            audio_s: c.audio_s,
-            llm_tokens: c.llm_tokens,
+            audio_s,
+            llm_tokens,
           },
         };
       }

@@ -1,11 +1,12 @@
-// Mock consults used by MockApi. Each entry is a finished result in the
-// output JSON contract (see CLAUDE.md), minus job_id and timings, which the
-// simulator fills in. The hero consult carries the planted error:
-// a 3-day MC on Panel A, whose limit is 2 days.
+// Mock consults used by MockApi. The hero is in the agent's output shape
+// (docs/agent_contract.md); the others use the CLAUDE.md contract. The UI
+// accepts both (see normalizeResult in app.js). The simulator adds job_id,
+// transcript and timings. The hero carries the planted error: a 3-day MC on
+// the AIA panel, whose limit is 2 days.
 window.MOCK_CONSULTS = [
   {
-    name: "hero_consult_panelA.wav",
-    panel: "Panel A",
+    // Agent-contract shape (docs/agent_contract.md), as the real pipeline returns it.
+    name: "hero_consult_aia.wav",
     audio_s: 164,
     transcript: [
       { speaker: "Doctor", start: 0.0, end: 3.4, text: "Good morning, come in. What brings you in today?" },
@@ -21,32 +22,47 @@ window.MOCK_CONSULTS = [
       { speaker: "Doctor", start: 48.4, end: 58.7, text: "It looks like a viral upper respiratory infection, likely flu-like. Antibiotics won't help here. I'll give you paracetamol, lozenges and a cough syrup." },
       { speaker: "Patient", start: 59.1, end: 63.5, text: "Okay. Can I get an MC? I work at a warehouse and I can't really lift things like this." },
       { speaker: "Doctor", start: 63.9, end: 70.2, text: "Sure, I'll give you three days of medical leave. Drink plenty of water and rest." },
-      { speaker: "Patient", start: 70.6, end: 72.8, text: "Thank you. My company uses Panel A, by the way." },
+      { speaker: "Patient", start: 70.6, end: 72.8, text: "Thank you. My company is on the AIA panel, by the way." },
       { speaker: "Doctor", start: 73.2, end: 81.0, text: "Noted. If the fever goes above 39 or lasts beyond five days, or you get breathless, come back straight away." }
     ],
     soap: {
-      S: "4-day history of fever, sore throat and nocturnal cough with myalgia and fatigue. No chest pain or shortness of breath. Self-medicating with paracetamol 1 g QID with partial relief. NKDA. Works in a warehouse (manual lifting).",
-      O: "T 38.4 °C. Pharynx erythematous, no tonsillar exudate. Chest clear on auscultation. SpO2 98% on room air.",
-      A: "Acute viral upper respiratory tract infection (influenza-like illness). No features of bacterial tonsillitis or lower respiratory involvement.",
-      P: "Paracetamol 1 g QID PRN (max 4 g/day), lozenges, dextromethorphan cough syrup 10 ml TDS. No antibiotics indicated. Fluids and rest. MC issued. Return if T > 39 °C, symptoms > 5 days, or breathlessness."
+      subjective: "4-day history of fever, sore throat and nocturnal cough with myalgia and fatigue. No chest pain or shortness of breath. Self-medicating with paracetamol 1 g QID with partial relief. NKDA. Works in a warehouse (manual lifting).",
+      objective: "T 38.4 °C. Pharynx erythematous, no tonsillar exudate. Chest clear on auscultation. SpO2 98% on room air.",
+      assessment: "Acute viral upper respiratory tract infection (influenza-like illness). No features of bacterial tonsillitis or lower respiratory involvement.",
+      plan: "Paracetamol 1 g QID PRN (max 4 g/day), lozenges, dextromethorphan 10 ml TDS. No antibiotics indicated. Fluids and rest. MC 3 days. Return if T > 39 °C, symptoms > 5 days, or breathlessness.",
+      diagnoses: ["Viral URTI"]
     },
-    mc: { days: 3, reason: "Acute viral URTI with fever; unable to perform manual lifting at work." },
-    drug_alerts: [
-      { drug: "Paracetamol", issue: "Patient already taking 1 g QID; total daily dose must stay ≤ 4 g. Advise not to combine with other paracetamol-containing products." }
+    prescriptions: [
+      { drug: "Paracetamol", dose: "1 g", frequency: "QID PRN", duration: "", in_formulary: true, status: "warning", notes: ["Already taking 1 g QID at home; keep total ≤ 4 g/day"] },
+      { drug: "Dextromethorphan", dose: "10 ml", frequency: "TDS", duration: "5 days", in_formulary: true, status: "ok", notes: [] },
+      { drug: "Strepsils lozenges", dose: "1", frequency: "PRN", duration: "", in_formulary: false, status: "warning", notes: ["Not on AIA formulary (formulary_only panel)"] }
     ],
+    mc: {
+      days: 3, start_date: "2026-10-17", end_date: "2026-10-19", reason: "Acute viral URTI with fever",
+      text: "This is to certify that the patient was examined on 2026-10-17 and is unfit for duty for 3 days, from 2026-10-17 to 2026-10-19 inclusive, due to acute viral URTI with fever."
+    },
+    panel: {
+      id: "PANEL-AIA", name: "AIA Corporate Panel", max_mc_days: 2, formulary_only: true,
+      notes: ["MC longer than 2 days needs panel pre-approval", "Antibiotics must have a documented indication"]
+    },
     flags: [
-      { issue: "MC exceeds Panel A limit (2 days)", fix: "Reduce MC to 2 days, or document a clinical reason for the extra day for panel review.", verified: true },
-      { issue: "Cough syrup brand not on Panel A drug list", fix: "Use the generic dextromethorphan listed in the Panel A formulary.", verified: false }
+      { severity: "warning", message: "MC of 3 days exceeds AIA Corporate Panel limit of 2 days, needs pre-approval.", source: "draft_mc" },
+      { severity: "warning", message: "Strepsils lozenges is not on the AIA formulary; use a listed alternative or bill the patient.", source: "check_drug" },
+      { severity: "info", message: "Paracetamol already taken at home; counsel on the 4 g/day ceiling.", source: "check_drug" }
     ],
-    tool_calls: [
-      { name: "get_panel_rules", args: { panel: "Panel A" }, result: { mc_limit_days: 2, referral_required_for: ["specialist", "imaging"], drug_caps: { paracetamol: "4 g/day" } } },
-      { name: "check_drug", args: { name: "paracetamol", dose: "1 g QID" }, result: { ok: true, max_daily: "4 g", note: "At ceiling; avoid duplicates" } },
-      { name: "check_drug", args: { name: "dextromethorphan", dose: "10 ml TDS" }, result: { ok: true, max_daily: "120 mg", interactions: ["SSRIs", "MAOIs"] } },
-      { name: "draft_mc", args: { days: 3, reason: "Acute viral URTI with fever" }, result: { mc_id: "MC-0001", days: 3 } },
-      { name: "flag", args: { issue: "MC exceeds Panel A limit (2 days)", fix: "Reduce to 2 days or add a reason" }, result: { recorded: true } },
-      { name: "flag", args: { issue: "Cough syrup brand not on Panel A drug list", fix: "Use generic" }, result: { recorded: true } },
-      { name: "write_soap_note", args: { subjective: "…", objective: "…", assessment: "…", plan: "…" }, result: { saved: true } }
-    ],
+    verification: { passed: true, unsupported: [], missing: [] },
+    meta: {
+      model: "nemotron-3.5-lightning", latency_ms: 3100,
+      tool_calls: [
+        { name: "get_panel_rules", arguments: { panel_id: "PANEL-AIA" }, ok: true },
+        { name: "check_drug", arguments: { drug: "paracetamol", dose: "1 g", frequency: "QID PRN" }, ok: true },
+        { name: "check_drug", arguments: { drug: "dextromethorphan", dose: "10 ml", frequency: "TDS" }, ok: true },
+        { name: "check_drug", arguments: { drug: "strepsils", dose: "1", frequency: "PRN" }, ok: true },
+        { name: "draft_mc", arguments: { days: 3, reason: "Acute viral URTI with fever" }, ok: true },
+        { name: "flag", arguments: { severity: "warning", message: "MC exceeds panel limit" }, ok: true },
+        { name: "write_soap_note", arguments: { subjective: "…", objective: "…", assessment: "…", plan: "…" }, ok: true }
+      ]
+    },
     llm_tokens: 1840
   },
   {

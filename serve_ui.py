@@ -1,6 +1,8 @@
 """Serve the ClinicScribe UI with FastAPI static files.
 
-    python serve_ui.py            # http://localhost:8000  (in-browser mock data)
+    python serve_ui.py            # http://localhost:8080  (in-browser mock data)
+
+Port 8000 is left free for vLLM; set PORT to change it.
 
 The real backend mounts the same folder after its API routes, e.g.:
 
@@ -8,6 +10,7 @@ The real backend mounts the same folder after its API routes, e.g.:
 
 Once GET /jobs answers, the page switches from mock data to the live API.
 """
+import os
 from pathlib import Path
 
 import uvicorn
@@ -20,4 +23,4 @@ app = FastAPI(title="ClinicScribe UI")
 app.mount("/", StaticFiles(directory=UI_DIR, html=True), name="ui")
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))
