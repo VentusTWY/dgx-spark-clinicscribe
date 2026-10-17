@@ -166,7 +166,10 @@
 
     $("mAudio").textContent = (audio / 60).toFixed(1);
     $("mWall").textContent = fmtSecs(wall);
-    $("mRtf").textContent = audio && wall ? `${(audio / wall).toFixed(1)}×` : "–";
+    // Seconds of processing per minute of audio, plus the real-time factor underneath.
+    const perMin = audio && wall ? (60 * wall) / audio : null;
+    $("mRtf").textContent = perMin == null ? "–" : perMin < 10 ? `${perMin.toFixed(1)} s` : `${Math.round(perMin)} s`;
+    $("mRtfX").textContent = perMin == null ? "" : `${(audio / wall).toFixed(0)}× faster than real time`;
     $("mTps").textContent = tokens && agentS ? Math.round(tokens / agentS).toString() : "–";
     $("mJobs").textContent = `${done.length} / ${jobs.length}`;
   }
