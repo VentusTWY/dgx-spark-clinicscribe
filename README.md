@@ -55,37 +55,49 @@ cd dgx-spark-clinicscribe
 
 ./scripts/check_server.sh                         # 1. is Lightning up? does tool calling work?
 ./scripts/run_agent.sh samples/transcript_urti.json   # 2. run the agent on the sample visit
+./scripts/run_agent.sh samples/diarized_urti.json     # 3. same visit as diarization + ASR output
 ```
 
-The result prints to the terminal and is saved to `out/transcript_urti.result.json`.
+The result prints to the terminal and is saved to `out/<input name>.result.json`.
 
-**Is the vLLM server up?** `check_server.sh` lists the served models, sends a test message and
-tests tool calling. To do it by hand:
+**Feeding it the diarization + ASR output.** Give the agent the first layer's JSON as is
+(`wav`, `total_duration`, and per segment `speaker` 0-8, `start`, `end`, `text`; see
+[samples/diarized_urti.json](samples/diarized_urti.json)). Lightning works out which speaker id is the
+doctor and which is the patient from what they say, and the result carries the labelled
+`transcript` with timestamps, plus `timings` for the metrics bar.
+
+**Is Lightning up?** `check_server.sh` lists the served models, sends a test message and
+tests tool calling. On the event ATOMs Lightning is served through Emarque's *switchyard* router
+on `127.0.0.1:9010` (and `:9011`), model id `lightning` (also `nano`, and `auto` which routes
+between them). Port 8000 is **not** the model on our ATOM: another service answers there with
+HTTP 500. To check by hand:
 
 ```bash
-curl -s http://localhost:8000/v1/models     # JSON with "id" = the model name
-ps aux | grep -i vllm | grep -v grep        # if refused: is vLLM running, on which --port?
+curl -s http://127.0.0.1:9010/v1/models
+curl -s http://127.0.0.1:9010/v1/chat/completions -H 'Content-Type: application/json' \
+  -d '{"model":"lightning","max_tokens":64,"messages":[{"role":"user","content":"Say OK"}]}'
+ss -ltnp | grep -E '9010|9011'               # if refused: is switchyard running?
 ```
 
-The organisers run vLLM for you. Per the event guide, do not start a second vLLM process.
-If it is down or tool calling is off (it needs `--enable-auto-tool-choice --tool-call-parser ...`),
-ask the EMARQUE mentors.
+The organisers run the model service. Per the event guide, do not start a second vLLM process
+or stop services that other people are running. If it is down, ask the EMARQUE mentors.
 
 **Different port or model name?** Everything is configurable:
 
 ```bash
-export LLM_BASE_URL=http://localhost:8000/v1   # default
-export LLM_MODEL=<id from /v1/models>          # default: first model the server lists
+export LLM_BASE_URL=http://127.0.0.1:9010/v1   # default
+export LLM_MODEL=lightning                     # default: "lightning" if listed, else the first model
 export LLM_THINKING=0                          # optional: turn off reasoning for speed
+export LLM_MAX_TOKENS=8192                     # optional: raise if replies come back empty (default 4096)
 ./scripts/run_agent.sh samples/transcript_urti.json
 # or: python3 -m agent my_visit.json --base-url ... --model ... --no-verify
 ```
 
-**Running from your laptop instead of the ATOM.** The model port is only open on the ATOM, so
-forward it over SSH (same login NVIDIA Sync uses), then run the agent on your laptop:
+**Running from your laptop instead of the ATOM.** The model port only listens on the ATOM's
+127.0.0.1, so forward it over SSH (same login NVIDIA Sync uses), then run the agent on your laptop:
 
 ```bash
-ssh -N -L 8000:localhost:8000 admin@<your-atom-hostname>.local
+ssh -N -L 9010:127.0.0.1:9010 admin@<your-atom-hostname-or-ip>
 # in another terminal on the laptop:
 ./scripts/run_agent.sh samples/transcript_urti.json
 ```
@@ -95,8 +107,9 @@ Running on the ATOM itself is simpler and is what the judges want to see.
 ### Use it from Python (e.g. the web UI)
 
 ```python
-from agent import run_agent
+from agent import run_agent, run_agent_on_segments
 result = run_agent(transcript_text, patient={"name": "...", "allergies": ["penicillin"], "panel_id": "PANEL-AIA"})
+result = run_agent_on_segments(first_layer_json, patient={...})   # diarized segments in, roles mapped
 ```
 
 The output shape is documented in [docs/agent_contract.md](docs/agent_contract.md); a full
@@ -118,6 +131,7 @@ calls Lightning would make.
 | `agent/llm.py` | OpenAI-compatible client for vLLM (stdlib only) |
 | `agent/tools.py` | Tool schemas and implementations |
 | `agent/agent.py` | Agent loop, verifier, output assembly |
+| `agent/segments.py` | Diarized input: loader, Doctor/Patient role mapping, timings |
 | `data/formulary.json`, `data/panels.json` | Synthetic demo formulary and panel rules |
 | `samples/` | Sample transcript, visit input and output |
 | `scripts/check_server.sh`, `scripts/run_agent.sh` | One-command server check and run |

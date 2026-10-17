@@ -81,8 +81,8 @@
     "missing": []
   },
   "meta": {
-    "model": "<served model id>",
-    "base_url": "http://localhost:8000/v1",
+    "model": "lightning",
+    "base_url": "http://127.0.0.1:9010/v1",
     "visit_date": "2026-10-17",
     "latency_ms": 8421,
     "tool_calls": [
@@ -144,5 +144,145 @@
         "ok": true
       }
     ]
+  },
+  "transcript": [
+    {
+      "speaker": "Doctor",
+      "speaker_id": "1",
+      "start": 1.0,
+      "end": 4.5,
+      "text": "Good morning, Encik Ahmad. What brings you in today?"
+    },
+    {
+      "speaker": "Patient",
+      "speaker_id": "0",
+      "start": 5.1,
+      "end": 12.4,
+      "text": "Morning doctor. I've had a sore throat and fever since two days ago. Also coughing, a bit of phlegm."
+    },
+    {
+      "speaker": "Doctor",
+      "speaker_id": "1",
+      "start": 13.0,
+      "end": 14.9,
+      "text": "Any runny nose? Body aches?"
+    },
+    {
+      "speaker": "Patient",
+      "speaker_id": "0",
+      "start": 15.5,
+      "end": 22.4,
+      "text": "Yes, runny nose, and my whole body is aching. I took Panadol at home, it helps a bit."
+    },
+    {
+      "speaker": "Doctor",
+      "speaker_id": "1",
+      "start": 23.0,
+      "end": 25.7,
+      "text": "Any shortness of breath or chest pain?"
+    },
+    {
+      "speaker": "Patient",
+      "speaker_id": "0",
+      "start": 26.3,
+      "end": 27.8,
+      "text": "No, nothing like that."
+    },
+    {
+      "speaker": "Doctor",
+      "speaker_id": "1",
+      "start": 28.4,
+      "end": 30.7,
+      "text": "Do you have any drug allergies?"
+    },
+    {
+      "speaker": "Patient",
+      "speaker_id": "0",
+      "start": 31.3,
+      "end": 34.4,
+      "text": "Yes, penicillin. I got a rash last time."
+    },
+    {
+      "speaker": "Doctor",
+      "speaker_id": "1",
+      "start": 35.0,
+      "end": 38.1,
+      "text": "Okay, noted. Any long-term illness or regular medication?"
+    },
+    {
+      "speaker": "Patient",
+      "speaker_id": "0",
+      "start": 38.7,
+      "end": 40.2,
+      "text": "No, I'm healthy otherwise."
+    },
+    {
+      "speaker": "Doctor",
+      "speaker_id": "1",
+      "start": 40.8,
+      "end": 50.8,
+      "text": "Let me check you. Temperature is 38.2. Throat is red, tonsils are slightly enlarged but no pus. Lungs are clear. Pulse 92, BP 124 over 78."
+    },
+    {
+      "speaker": "Doctor",
+      "speaker_id": "1",
+      "start": 51.4,
+      "end": 70.2,
+      "text": "This looks like a viral upper respiratory tract infection. You don't need antibiotics for now. I'll give you paracetamol 1 gram four times a day as needed for fever, cetirizine 10 milligrams at night for the runny nose, and bromhexine 8 milligrams three times a day for the phlegm."
+    },
+    {
+      "speaker": "Patient",
+      "speaker_id": "0",
+      "start": 70.8,
+      "end": 77.0,
+      "text": "Doctor, can I get MC? I work at the factory, I can't go in like this."
+    },
+    {
+      "speaker": "Doctor",
+      "speaker_id": "1",
+      "start": 77.6,
+      "end": 84.1,
+      "text": "Yes, I'll give you MC for two days, today and tomorrow. Drink plenty of water and rest."
+    },
+    {
+      "speaker": "Doctor",
+      "speaker_id": "1",
+      "start": 84.7,
+      "end": 92.0,
+      "text": "If the fever goes above 39, or you get breathless, or it's not better in 3 days, come back."
+    },
+    {
+      "speaker": "Patient",
+      "speaker_id": "0",
+      "start": 92.6,
+      "end": 96.4,
+      "text": "Okay doctor. I'm under the AIA panel from my company."
+    },
+    {
+      "speaker": "Doctor",
+      "speaker_id": "1",
+      "start": 97.0,
+      "end": 98.5,
+      "text": "Alright, we'll bill AIA."
+    }
+  ],
+  "speakers": {
+    "roles": {
+      "1": "Doctor",
+      "0": "Patient"
+    },
+    "method": "model"
+  },
+  "audio": {
+    "file": "consult_urti.wav",
+    "duration_s": 100.1
+  },
+  "timings": {
+    "diarization_s": 3.1,
+    "asr_s": 4.6,
+    "agent_s": 9.3,
+    "audio_s": 100.1,
+    "llm_tokens": 1450,
+    "total_s": 17.0
   }
 }

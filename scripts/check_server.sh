@@ -2,15 +2,16 @@
 # Check the vLLM server on the ATOM is up and can answer.
 # Usage: ./scripts/check_server.sh   (override with LLM_BASE_URL / LLM_MODEL)
 set -euo pipefail
-BASE="${LLM_BASE_URL:-http://localhost:8000/v1}"
+export NO_PROXY="localhost,127.0.0.1,${NO_PROXY:-}" no_proxy="localhost,127.0.0.1,${no_proxy:-}"
+BASE="${LLM_BASE_URL:-http://127.0.0.1:9010/v1}"
 
 echo "== Models at $BASE/models"
 if ! MODELS=$(curl -sf --max-time 10 "$BASE/models"); then
-  echo "Cannot reach $BASE. Is vLLM running? Try: ps aux | grep -i vllm ; ss -ltnp | grep 8000" >&2
+  echo "Cannot reach $BASE. Is vLLM running? Try: ss -ltnp | grep -E '9010|9011|8000'" >&2
   exit 1
 fi
 echo "$MODELS" | python3 -m json.tool
-MODEL="${LLM_MODEL:-$(echo "$MODELS" | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"][0]["id"])')}"
+MODEL="${LLM_MODEL:-$(echo "$MODELS" | python3 -c 'import json,sys; ids=[m["id"] for m in json.load(sys.stdin)["data"]]; print("lightning" if "lightning" in ids else ids[0])')}"
 
 echo "== Chat test with $MODEL"
 curl -sf --max-time 120 "$BASE/chat/completions" -H 'Content-Type: application/json' \

@@ -1,7 +1,10 @@
-"""CLI: python3 -m agent <transcript.txt | visit.json> [--out result.json]
+"""CLI: python3 -m agent <transcript.txt | visit.json | diarized.json> [--out result.json]
 
-A .json input looks like samples/transcript_urti.json:
+A visit .json looks like samples/transcript_urti.json:
   {"transcript": "..." or "transcript_file": "x.txt", "patient": {...}, "visit_date": "YYYY-MM-DD"}
+A diarized .json (first-layer output) looks like samples/diarized_urti.json:
+  {"wav": "...", "total_duration": 95.0, "segments": [{"speaker": 0, "start": 1.0, "end": 10.0, "text": "..."}],
+   "patient": {...}, "visit_date": "..."}
 """
 
 import argparse
@@ -11,6 +14,7 @@ from pathlib import Path
 
 from .agent import run_agent
 from .llm import LLMClient, LLMError
+from .segments import is_segment_input, run_agent_on_segments
 
 
 def load_input(path):
@@ -24,18 +28,24 @@ def load_input(path):
 
 def main():
     ap = argparse.ArgumentParser(prog="python3 -m agent", description="Summarise a consultation transcript with Lightning")
-    ap.add_argument("input", help="Transcript .txt, or visit .json with patient details")
-    ap.add_argument("--base-url", help="OpenAI-compatible base URL (default $LLM_BASE_URL or http://localhost:8000/v1)")
-    ap.add_argument("--model", help="Model id (default $LLM_MODEL, else the first model the server lists)")
+    ap.add_argument("input", help="Transcript .txt, visit .json, or diarized .json (first-layer output)")
+    ap.add_argument("--base-url", help="OpenAI-compatible base URL (default $LLM_BASE_URL or http://127.0.0.1:9010/v1)")
+    ap.add_argument("--model", help="Model id (default $LLM_MODEL, else \"lightning\" if served, else the first model)")
     ap.add_argument("--no-verify", action="store_true", help="Skip the verifier pass")
     ap.add_argument("--out", help="Also write the JSON result to this file")
     args = ap.parse_args()
 
-    transcript, patient, visit_date = load_input(args.input)
     client = LLMClient(base_url=args.base_url, model=args.model)
+    data = json.loads(Path(args.input).read_text()) if args.input.endswith(".json") else None
     try:
-        result = run_agent(transcript, patient, visit_date, client=client, verify=not args.no_verify)
-    except LLMError as e:
+        if data is not None and is_segment_input(data):
+            patient = data.get("patient") if isinstance(data, dict) else None
+            visit_date = data.get("visit_date") if isinstance(data, dict) else None
+            result = run_agent_on_segments(data, patient, visit_date, client=client, verify=not args.no_verify)
+        else:
+            transcript, patient, visit_date = load_input(args.input)
+            result = run_agent(transcript, patient, visit_date, client=client, verify=not args.no_verify)
+    except (LLMError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         sys.exit(1)
 

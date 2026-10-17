@@ -7,9 +7,13 @@ import json
 import os
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
 
-DEFAULT_BASE_URL = "http://localhost:8000/v1"
+# The event's ATOM serves Lightning through Emarque's switchyard router on 9010
+# (port 8000 is taken by another service there).
+DEFAULT_BASE_URL = "http://127.0.0.1:9010/v1"
+PREFERRED_MODEL = "lightning"
 
 
 class LLMError(RuntimeError):
@@ -22,6 +26,13 @@ class LLMClient:
         self.api_key = api_key or os.environ.get("LLM_API_KEY") or "EMPTY"
         self.timeout = timeout
         self._model = model or os.environ.get("LLM_MODEL")
+        # Reasoning tokens count against max_tokens; raise it if content comes back empty.
+        self.max_tokens = int(os.environ.get("LLM_MAX_TOKENS", "4096"))
+        self.completion_tokens = 0
+        # A local server must not go through an http_proxy set in the environment.
+        host = urllib.parse.urlparse(self.base_url).hostname or ""
+        local = host in ("localhost", "127.0.0.1", "::1") or host.endswith(".local")
+        self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({})) if local else urllib.request.build_opener()
 
     def _request(self, method, path, body=None):
         data = json.dumps(body).encode() if body is not None else None
@@ -32,7 +43,7 @@ class LLMClient:
             headers={"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"},
         )
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            with self._opener.open(req, timeout=self.timeout) as resp:
                 return json.loads(resp.read().decode())
         except urllib.error.HTTPError as e:
             raise LLMError(f"{method} {path} -> HTTP {e.code}: {e.read().decode(errors='replace')[:500]}") from e
@@ -44,20 +55,20 @@ class LLMClient:
 
     @property
     def model(self):
-        # If no model name is configured, use whatever the server is serving.
+        # If no model name is configured, prefer "lightning", else the first one served.
         if not self._model:
             models = self.list_models()
             if not models:
                 raise LLMError("Server reports no models at /models")
-            self._model = models[0]
+            self._model = PREFERRED_MODEL if PREFERRED_MODEL in models else models[0]
         return self._model
 
-    def chat(self, messages, tools=None, temperature=0.2, max_tokens=2048, json_mode=False):
+    def chat(self, messages, tools=None, temperature=0.2, max_tokens=None, json_mode=False):
         body = {
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": max_tokens,
+            "max_tokens": max_tokens or self.max_tokens,
         }
         if tools:
             body["tools"] = tools
@@ -68,6 +79,7 @@ class LLMClient:
         if os.environ.get("LLM_THINKING") == "0":
             body["chat_template_kwargs"] = {"enable_thinking": False}
         resp = self._request("POST", "/chat/completions", body)
+        self.completion_tokens += (resp.get("usage") or {}).get("completion_tokens", 0)
         try:
             return resp["choices"][0]["message"]
         except (KeyError, IndexError) as e:
