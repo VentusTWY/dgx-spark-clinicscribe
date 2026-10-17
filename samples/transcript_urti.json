@@ -1,0 +1,11 @@
+{
+  "transcript_file": "transcript_urti.txt",
+  "patient": {
+    "name": "Ahmad bin Ismail",
+    "age": 34,
+    "sex": "M",
+    "allergies": ["penicillin"],
+    "panel_id": "PANEL-AIA"
+  },
+  "visit_date": "2026-10-17"
+}

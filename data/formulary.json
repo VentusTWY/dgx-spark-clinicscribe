@@ -1,0 +1,23 @@
+{
+  "_note": "Synthetic demo formulary for the hackathon. Not clinical guidance.",
+  "drugs": [
+    {"name": "Paracetamol", "aliases": ["acetaminophen", "panadol"], "class": "analgesic", "allergy_group": null, "max_daily_mg": 4000, "typical": "1 g QID PRN", "interactions": ["warfarin"]},
+    {"name": "Ibuprofen", "aliases": ["brufen", "nurofen"], "class": "NSAID", "allergy_group": "nsaid", "max_daily_mg": 2400, "typical": "400 mg TDS after food", "interactions": ["warfarin", "aspirin", "lisinopril"], "cautions": ["peptic ulcer", "asthma", "kidney disease", "pregnancy third trimester"]},
+    {"name": "Diclofenac", "aliases": ["voltaren"], "class": "NSAID", "allergy_group": "nsaid", "max_daily_mg": 150, "typical": "50 mg TDS after food", "interactions": ["warfarin", "aspirin", "lisinopril"], "cautions": ["peptic ulcer", "asthma", "kidney disease"]},
+    {"name": "Amoxicillin", "aliases": ["amoxil"], "class": "penicillin antibiotic", "allergy_group": "penicillin", "max_daily_mg": 3000, "typical": "500 mg TDS x 5 days", "interactions": ["warfarin", "methotrexate"]},
+    {"name": "Amoxicillin-clavulanate", "aliases": ["augmentin", "co-amoxiclav"], "class": "penicillin antibiotic", "allergy_group": "penicillin", "max_daily_mg": 2625, "typical": "625 mg BD x 5 days", "interactions": ["warfarin"]},
+    {"name": "Azithromycin", "aliases": ["zithromax"], "class": "macrolide antibiotic", "allergy_group": "macrolide", "max_daily_mg": 500, "typical": "500 mg OD x 3 days", "interactions": ["warfarin"]},
+    {"name": "Cetirizine", "aliases": ["zyrtec"], "class": "antihistamine", "allergy_group": null, "max_daily_mg": 10, "typical": "10 mg ON", "interactions": []},
+    {"name": "Chlorpheniramine", "aliases": ["piriton", "cpm"], "class": "sedating antihistamine", "allergy_group": null, "max_daily_mg": 24, "typical": "4 mg TDS", "interactions": [], "cautions": ["drowsiness, avoid driving"]},
+    {"name": "Loratadine", "aliases": ["clarityne"], "class": "antihistamine", "allergy_group": null, "max_daily_mg": 10, "typical": "10 mg OD", "interactions": []},
+    {"name": "Dextromethorphan", "aliases": ["dmx"], "class": "antitussive", "allergy_group": null, "max_daily_mg": 120, "typical": "15 mg TDS", "interactions": ["fluoxetine", "sertraline"]},
+    {"name": "Bromhexine", "aliases": ["bisolvon"], "class": "mucolytic", "allergy_group": null, "max_daily_mg": 48, "typical": "8 mg TDS", "interactions": []},
+    {"name": "Omeprazole", "aliases": ["losec"], "class": "proton pump inhibitor", "allergy_group": null, "max_daily_mg": 40, "typical": "20 mg OD before breakfast", "interactions": ["clopidogrel"]},
+    {"name": "Oral rehydration salts", "aliases": ["ors", "hydrolyte"], "class": "rehydration", "allergy_group": null, "max_daily_mg": null, "typical": "1 sachet after each loose stool", "interactions": []},
+    {"name": "Loperamide", "aliases": ["imodium"], "class": "antidiarrhoeal", "allergy_group": null, "max_daily_mg": 16, "typical": "4 mg stat then 2 mg after each loose stool", "interactions": [], "cautions": ["bloody diarrhoea", "fever"]},
+    {"name": "Salbutamol", "aliases": ["ventolin"], "class": "bronchodilator", "allergy_group": null, "max_daily_mg": null, "typical": "2 puffs PRN", "interactions": []},
+    {"name": "Metformin", "aliases": ["glucophage"], "class": "antidiabetic", "allergy_group": null, "max_daily_mg": 2000, "typical": "500 mg BD", "interactions": []},
+    {"name": "Amlodipine", "aliases": ["norvasc"], "class": "calcium channel blocker", "allergy_group": null, "max_daily_mg": 10, "typical": "5 mg OD", "interactions": []},
+    {"name": "Warfarin", "aliases": [], "class": "anticoagulant", "allergy_group": null, "max_daily_mg": null, "typical": "as per INR", "interactions": ["ibuprofen", "diclofenac", "aspirin", "amoxicillin", "azithromycin", "paracetamol"]}
+  ]
+}
