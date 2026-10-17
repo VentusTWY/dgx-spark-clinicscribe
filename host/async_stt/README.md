@@ -7,7 +7,7 @@ segment transcription and summarization. The host project is
 `~/Documents/async_stt`; the gateway script expects it at `/workspace` inside
 `env_edwin`. ClinicScribe's reported container checkout is
 `/workspace/clinicscribe`. Keep these runtime paths distinct from this repository's
-`host/async_stt/` snapshot folder. See the [main README](../../README.md#python-modules-from-the-original-host)
+`host/async_stt/` snapshot folder. See the [main README](../../README.md#appendix-python-modules-from-the-original-host)
 for the file mapping and diagnostic-client storage requirements.
 
 - `pipeline.py`: Celery/Ray pipeline orchestration.
