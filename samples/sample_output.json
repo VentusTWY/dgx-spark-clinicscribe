@@ -1,0 +1,148 @@
+{
+  "soap": {
+    "subjective": "Sore throat, fever, cough 2 days. Penicillin allergy (rash).",
+    "objective": "T 38.2, PR 92, BP 124/78. Injected throat, lungs clear.",
+    "assessment": "Viral URTI",
+    "plan": "Paracetamol, cetirizine, bromhexine. MC 2 days. Return if T>39 or breathless.",
+    "diagnoses": [
+      "Viral URTI"
+    ]
+  },
+  "prescriptions": [
+    {
+      "drug": "Paracetamol",
+      "dose": "1 g",
+      "frequency": "QID PRN",
+      "duration": "",
+      "in_formulary": true,
+      "status": "ok",
+      "notes": []
+    },
+    {
+      "drug": "Cetirizine",
+      "dose": "10 mg",
+      "frequency": "ON",
+      "duration": "",
+      "in_formulary": true,
+      "status": "ok",
+      "notes": []
+    },
+    {
+      "drug": "Amoxicillin-clavulanate",
+      "dose": "625 mg",
+      "frequency": "BD",
+      "duration": "",
+      "in_formulary": true,
+      "status": "danger",
+      "notes": [
+        "Patient is allergic to penicillin"
+      ]
+    }
+  ],
+  "mc": {
+    "days": 3,
+    "start_date": "2026-10-17",
+    "end_date": "2026-10-19",
+    "reason": "Upper respiratory tract infection",
+    "text": "This is to certify that Ahmad bin Ismail was examined on 2026-10-17 and is unfit for duty for 3 days, from 2026-10-17 to 2026-10-19 inclusive, due to Upper respiratory tract infection."
+  },
+  "panel": {
+    "id": "PANEL-AIA",
+    "name": "AIA Corporate Panel",
+    "max_mc_days": 2,
+    "formulary_only": true,
+    "notes": [
+      "MC longer than 2 days needs panel pre-approval",
+      "Antibiotics must have a documented indication"
+    ]
+  },
+  "flags": [
+    {
+      "severity": "critical",
+      "message": "Amoxicillin-clavulanate conflicts with documented penicillin allergy.",
+      "source": "check_drug"
+    },
+    {
+      "severity": "warning",
+      "message": "MC of 3 days exceeds AIA Corporate Panel limit of 2 days, needs pre-approval.",
+      "source": "draft_mc"
+    },
+    {
+      "severity": "warning",
+      "message": "Not supported by transcript: Augmentin was not prescribed",
+      "source": "verifier"
+    }
+  ],
+  "verification": {
+    "passed": false,
+    "unsupported": [
+      "Augmentin was not prescribed"
+    ],
+    "missing": []
+  },
+  "meta": {
+    "model": "<served model id>",
+    "base_url": "http://localhost:8000/v1",
+    "visit_date": "2026-10-17",
+    "latency_ms": 8421,
+    "tool_calls": [
+      {
+        "name": "get_panel_rules",
+        "arguments": {
+          "panel_id": "PANEL-AIA"
+        },
+        "ok": true
+      },
+      {
+        "name": "check_drug",
+        "arguments": {
+          "drug": "paracetamol",
+          "dose": "1 g",
+          "frequency": "QID PRN",
+          "dose_mg": 1000,
+          "times_per_day": 4
+        },
+        "ok": true
+      },
+      {
+        "name": "check_drug",
+        "arguments": {
+          "drug": "cetirizine",
+          "dose": "10 mg",
+          "frequency": "ON"
+        },
+        "ok": true
+      },
+      {
+        "name": "check_drug",
+        "arguments": {
+          "drug": "Augmentin",
+          "dose": "625 mg",
+          "frequency": "BD"
+        },
+        "ok": true
+      },
+      {
+        "name": "draft_mc",
+        "arguments": {
+          "days": 3,
+          "reason": "Upper respiratory tract infection"
+        },
+        "ok": true
+      },
+      {
+        "name": "write_soap_note",
+        "arguments": {
+          "subjective": "Sore throat, fever, cough 2 days. Penicillin allergy (rash).",
+          "objective": "T 38.2, PR 92, BP 124/78. Injected throat, lungs clear.",
+          "assessment": "Viral URTI",
+          "plan": "Paracetamol, cetirizine, bromhexine. MC 2 days. Return if T>39 or breathless.",
+          "diagnoses": [
+            "Viral URTI"
+          ]
+        },
+        "ok": true
+      }
+    ]
+  }
+}

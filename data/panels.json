@@ -1,0 +1,9 @@
+{
+  "_note": "Synthetic demo panel (corporate / insurer) rules for the hackathon.",
+  "panels": [
+    {"id": "PANEL-AIA", "name": "AIA Corporate Panel", "max_mc_days": 2, "max_consult_rm": 35, "max_meds_rm": 60, "requires_ic": true, "excluded_classes": ["vitamins", "cosmetic"], "formulary_only": true, "notes": ["MC longer than 2 days needs panel pre-approval", "Antibiotics must have a documented indication"]},
+    {"id": "PANEL-PMCARE", "name": "PMCare", "max_mc_days": 3, "max_consult_rm": 30, "max_meds_rm": 50, "requires_ic": true, "excluded_classes": ["vitamins", "supplements"], "formulary_only": true, "notes": ["Branded drugs only if generic unavailable"]},
+    {"id": "PANEL-GOVT-STAFF", "name": "Government Staff Panel", "max_mc_days": 1, "max_consult_rm": 25, "max_meds_rm": 40, "requires_ic": true, "excluded_classes": [], "formulary_only": true, "notes": ["MC more than 1 day must be referred to government clinic"]},
+    {"id": "SELF-PAY", "name": "Self-paying patient", "max_mc_days": null, "max_consult_rm": null, "max_meds_rm": null, "requires_ic": false, "excluded_classes": [], "formulary_only": false, "notes": []}
+  ]
+}
