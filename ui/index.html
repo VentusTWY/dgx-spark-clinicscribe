@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ClinicScribe</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">✚</span>
+      <span class="name">ClinicScribe</span>
+      <span class="tag">consult audio → checked SOAP note, MC &amp; panel claim</span>
+    </div>
+    <div class="badges">
+      <span class="badge local">● 100% local · Gigabyte AI TOP ATOM</span>
+      <span class="badge mode" id="modeBadge">MOCK</span>
+    </div>
+  </header>
+
+  <section class="metrics" id="metrics">
+    <div class="metric"><span class="value" id="mAudio">0.0</span><span class="label">audio minutes processed</span></div>
+    <div class="metric"><span class="value" id="mWall">0.0 s</span><span class="label">wall time</span></div>
+    <div class="metric"><span class="value" id="mRtf">–</span><span class="label">faster than real time</span></div>
+    <div class="metric"><span class="value" id="mTps">–</span><span class="label">Lightning tokens/s</span></div>
+    <div class="metric"><span class="value" id="mJobs">0 / 0</span><span class="label">consults done</span></div>
+    <div class="metric cost"><span class="value">RM0</span><span class="label">API cost</span></div>
+  </section>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <label class="dropzone" id="dropzone">
+        <input type="file" id="fileInput" accept="audio/*,.wav,.mp3,.m4a,.flac,.ogg" multiple hidden>
+        <span class="dz-title">Drop consult audio here</span>
+        <span class="dz-sub">or click to choose one or many files</span>
+      </label>
+      <button class="btn secondary" id="demoBtn">Load demo batch (hero + 10)</button>
+      <div class="joblist-head">
+        <span>Jobs</span>
+        <span class="legend"><i class="chip doctor done"></i>Doctor <i class="chip patient done"></i>Patient</span>
+      </div>
+      <ul class="joblist" id="jobList"></ul>
+    </aside>
+
+    <section class="detail" id="detail">
+      <div class="empty" id="emptyState">
+        <p>Upload consults or load the demo batch.</p>
+        <p class="muted">Pick a job to see its transcript, SOAP note, tool calls and flags.</p>
+      </div>
+
+      <div class="detail-body hidden" id="detailBody">
+        <div class="detail-head">
+          <div>
+            <h2 id="dTitle"></h2>
+            <div class="stages" id="dStages"></div>
+            <div class="banner" id="dBanner"></div>
+          </div>
+          <button class="btn approve" id="approveBtn" disabled>Approve</button>
+        </div>
+
+        <div class="grid">
+          <div class="panel transcript-panel">
+            <h3>Transcript</h3>
+            <div class="transcript" id="dTranscript"></div>
+          </div>
+
+          <div class="panel">
+            <h3>SOAP note <span class="muted small" id="soapState"></span></h3>
+            <div class="soap" id="dSoap"></div>
+          </div>
+
+          <div class="panel">
+            <h3>Agent tool calls</h3>
+            <ol class="tools" id="dTools"></ol>
+          </div>
+
+          <div class="panel">
+            <h3>Checks</h3>
+            <div id="dFlags"></div>
+            <div id="dMc"></div>
+            <div id="dDrugs"></div>
+            <div class="timings" id="dTimings"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="mock/consults.js"></script>
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
