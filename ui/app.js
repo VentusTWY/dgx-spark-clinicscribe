@@ -289,7 +289,7 @@
     $("detailBody").classList.toggle("hidden", !j);
     if (!j) return;
 
-    const key = `${j.job_id}|${j.status}|${j.turns.filter((t) => t.done).length}|${j.approved}`;
+    const key = `${j.job_id}|${j.status}|${j.turns.filter((t) => t.done).length}|${j.approved}|${!!j.result}`;
     if (key === detailKey) return;
     const jobChanged = !detailKey.startsWith(j.job_id + "|");
     detailKey = key;
