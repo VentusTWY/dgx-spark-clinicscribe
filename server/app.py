@@ -10,6 +10,7 @@ Pipeline (one process, asyncio queues, see CLAUDE.md):
 Uploads:
   - first-layer JSON (wav, total_duration, segments [{speaker, start, end, text}]) goes straight to the agent.
   - audio goes to the first layer, configured with one of:
+      STT_API=http://127.0.0.1:8100        the async_stt gateway (stt_gateway/api.py); turns light up live
       STT_URL=http://127.0.0.1:PORT/path   POST multipart field "file", JSON response
       STT_CMD='python3 ~/Documents/async_stt/run.py {audio}'   JSON on stdout, or written to {out}
     With neither set, a cached first-layer JSON with the same name (<stem>.json in SAMPLES_DIR) is used.
@@ -48,10 +49,13 @@ OUT_DIR = Path(os.environ.get("OUT_DIR", ROOT / "out"))
 UPLOAD_DIR = OUT_DIR / "uploads"
 SAMPLES_DIR = Path(os.path.expanduser(os.environ.get("SAMPLES_DIR", str(ROOT / "samples"))))
 PATIENTS_FILE = Path(os.environ.get("PATIENTS_FILE", ROOT / "samples" / "patients.json"))
+STT_API = os.environ.get("STT_API", "").rstrip("/")
 STT_URL = os.environ.get("STT_URL", "")
 STT_CMD = os.environ.get("STT_CMD", "")
-STT_WORKERS = int(os.environ.get("STT_WORKERS", "1"))
+# async_stt queues and scales its own GPU work, so many jobs can be in flight there at once.
+STT_WORKERS = int(os.environ.get("STT_WORKERS", "8" if STT_API else "1"))
 AGENT_WORKERS = int(os.environ.get("AGENT_WORKERS", "4"))
+STT_POLL_S = float(os.environ.get("STT_POLL_S", "1"))
 STT_TIMEOUT = int(os.environ.get("STT_TIMEOUT", "1800"))
 MAX_TRIES = 2
 
@@ -97,17 +101,45 @@ def cached_first_layer(stem):
     return None
 
 
+def _multipart_file(path):
+    boundary = uuid.uuid4().hex
+    head = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{path.name}\"\r\n"
+            "Content-Type: application/octet-stream\r\n\r\n").encode()
+    return head + path.read_bytes() + f"\r\n--{boundary}--\r\n".encode(), f"multipart/form-data; boundary={boundary}"
+
+
+def _local_json(url, body=None, ctype=None, timeout=60):
+    req = urllib.request.Request(url, data=body, headers={"Content-Type": ctype} if ctype else {})
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # local service, never a proxy
+    with opener.open(req, timeout=timeout) as resp:
+        return json.loads(resp.read())
+
+
+async def run_stt_api(job):
+    """Submit to the async_stt gateway and mirror its per-turn progress onto the job, so chips light up."""
+    body, ctype = _multipart_file(job["_path"])
+    stt_id = (await asyncio.to_thread(_local_json, f"{STT_API}/jobs", body, ctype))["job_id"]
+    started = time.time()
+    while time.time() - started < STT_TIMEOUT:
+        st = await asyncio.to_thread(_local_json, f"{STT_API}/jobs/{stt_id}")
+        if st["status"] == "failed":
+            raise RuntimeError(st.get("error") or "async_stt job failed")
+        if st.get("total_duration"):
+            job["audio_s"] = st["total_duration"]
+        if st["turns"]:
+            job["turns"] = [{**t, "speaker": f"Speaker {t['speaker']}"} for t in st["turns"]]
+            job["status"] = "transcribing"
+        if st["status"] == "done":
+            return st["result"]
+        await asyncio.sleep(STT_POLL_S)
+    raise TimeoutError(f"async_stt job {stt_id} still running after {STT_TIMEOUT}s")
+
+
 def run_first_layer(audio_path):
     """Call the team's diarization + ASR first layer. Blocking; runs in a thread."""
     if STT_URL:
-        boundary = uuid.uuid4().hex
-        head = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{audio_path.name}\"\r\n"
-                "Content-Type: application/octet-stream\r\n\r\n").encode()
-        body = head + audio_path.read_bytes() + f"\r\n--{boundary}--\r\n".encode()
-        req = urllib.request.Request(STT_URL, data=body, headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # local service, never a proxy
-        with opener.open(req, timeout=STT_TIMEOUT) as resp:
-            return json.loads(resp.read())
+        body, ctype = _multipart_file(audio_path)
+        return _local_json(STT_URL, body, ctype, timeout=STT_TIMEOUT)
     if STT_CMD:
         with tempfile.TemporaryDirectory() as tmp:
             out_path = Path(tmp) / "first_layer.json"
@@ -122,7 +154,7 @@ def run_first_layer(audio_path):
     cached = cached_first_layer(audio_path.stem.split("__", 1)[-1])
     if cached is not None:
         return cached
-    raise RuntimeError("No first layer configured: set STT_URL or STT_CMD, or upload the first-layer JSON")
+    raise RuntimeError("No first layer configured: set STT_API, STT_URL or STT_CMD, or upload the first-layer JSON")
 
 
 def set_turns(job, data):
@@ -148,11 +180,12 @@ async def first_layer_worker():
         job["status"] = "diarizing"
         started = time.time()
         try:
-            data = await asyncio.to_thread(run_first_layer, job["_path"])
+            data = await (run_stt_api(job) if STT_API else asyncio.to_thread(run_first_layer, job["_path"]))
             if not is_segment_input(data):
                 raise ValueError("First layer returned JSON without a segments list")
             job["_data"] = data
-            job["_timings"] = {"diarization_s": None, "asr_s": round(time.time() - started, 2), **(data.get("timings") or {})}
+            upstream = {k: v for k, v in (data.get("timings") or {}).items() if v is not None}
+            job["_timings"] = {"diarization_s": None, "asr_s": round(time.time() - started, 2), **upstream}
             set_turns(job, data)
             job["status"] = "summarising"
             await agent_queue.put(job["job_id"])
@@ -289,7 +322,7 @@ async def health():
             return {"ok": True, "llm": client.base_url, "model": client.model}
         except Exception as e:  # noqa: BLE001
             return {"ok": False, "llm": client.base_url, "error": str(e)}
-    first = "STT_URL" if STT_URL else "STT_CMD" if STT_CMD else f"cached JSON in {SAMPLES_DIR}"
+    first = f"async_stt at {STT_API}" if STT_API else "STT_URL" if STT_URL else "STT_CMD" if STT_CMD else f"cached JSON in {SAMPLES_DIR}"
     return {**await asyncio.to_thread(check), "first_layer": first, "jobs": len(jobs)}
 
 

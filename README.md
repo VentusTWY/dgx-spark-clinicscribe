@@ -26,7 +26,21 @@ page or the backend touches the internet, so Wi-Fi can be off.
 | Audio (`.wav` etc.) with `STT_URL` or `STT_CMD` set | The first layer (diarization + ASR) runs on it, then the agent. |
 | Audio with neither set | Uses a cached first-layer JSON with the same name from `samples/` (`<name>.json` or `diarized_<name>.json`). |
 
-Hooking up the first layer (pick one):
+**The team's async_stt pipeline as the first layer.** `stt_gateway/api.py` is a small FastAPI
+front door for `~/Documents/async_stt` (diarization + ASR workers on Ray Serve / Celery in the
+`env_edwin` container). It submits a wav to their `run_pipeline` task and reads progress from their
+job files, so async_stt itself is unchanged. With it, each turn chip in the UI lights up as async_stt
+transcribes that turn.
+
+```bash
+./scripts/start_stt_gateway.sh   # copies the gateway into async_stt, starts it in env_edwin on 127.0.0.1:8100
+./scripts/start_demo.sh          # finds the gateway on :8100 and uses it for audio uploads
+```
+
+Gateway routes: `POST /jobs` (multipart `file`), `GET /jobs/{id}` (status, per-turn progress, transcript),
+`POST /transcribe` (waits and returns the transcript), `GET /health`.
+
+Other ways to hook up a first layer:
 
 ```bash
 STT_URL=http://127.0.0.1:PORT/transcribe ./scripts/start_demo.sh                # POST multipart "file", JSON back
