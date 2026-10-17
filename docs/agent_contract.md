@@ -40,6 +40,13 @@ or `speaker_duration` / `duration` / `time` as `[1, 10]`, `"(1, 10)"` or `{"star
 `audio` / `filename` / `audio_file`; length `total_duration` / `duration` / `audio_s`. `timings` is optional and
 passed through.
 
+**async_stt job files** (`~/Documents/async_stt/data/jobs/<id>.json` on the ATOM) are read as is:
+`{"job_id", "status", "tasks": {id: {"task_type", "audio_path", "result": {"duration", "segments": [...]}}}}`.
+Diarization segments (`speaker`, `start`, `end`, no text) come from one task; text comes from a task whose
+segments carry `text`, or from one ASR task per turn (`result.text`). Each piece of text is attached to the
+diarized segment it overlaps most, and consecutive segments from the same speaker are merged into one turn.
+A job with diarization but no text yet fails with a clear "no transcribed text yet" error.
+
 Lightning maps each speaker id to a role (Doctor, Patient, Nurse, Caregiver, Other) from what they say. If its
 answer is unusable (not exactly one Doctor), a keyword heuristic decides instead. The agent then sees the
 transcript as `[00:01-00:04] Doctor: ...` lines.

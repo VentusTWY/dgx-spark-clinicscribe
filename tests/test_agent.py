@@ -183,6 +183,42 @@ class SegmentLoaderTest(unittest.TestCase):
         self.assertEqual(audio, {"file": "a.wav", "duration_s": 20.0})
         self.assertEqual(heuristic_roles(segs), {"2": "Doctor", "3": "Patient"})
 
+    def test_async_stt_job_with_separate_asr_task(self):
+        job = {
+            "job_id": "j1", "status": "completed",
+            "tasks": {
+                "t1": {"task_type": "diarization", "status": "completed", "audio_path": "/workspace/c.wav",
+                       "result": {"duration": 12.0, "speaker_count": 2, "segments": [
+                           {"speaker": "0", "start": 0.0, "end": 3.0},
+                           {"speaker": "0", "start": 3.1, "end": 4.0},
+                           {"speaker": "1", "start": 4.2, "end": 9.0},
+                           {"speaker": "0", "start": 9.2, "end": 9.4}]}},
+                "t2": {"task_type": "asr", "status": "completed", "result": {"segments": [
+                    {"start": 0.1, "end": 2.9, "text": "What brings you in?"},
+                    {"start": 3.1, "end": 3.9, "text": "Any allergies?"},
+                    {"start": 4.3, "end": 8.8, "text": "Fever for two days."}]}},
+            },
+        }
+        segs, audio = load_segments(job)
+        self.assertEqual(audio, {"file": "/workspace/c.wav", "duration_s": 12.0})
+        self.assertEqual([(s["speaker_id"], s["start"], s["end"], s["text"]) for s in segs], [
+            ("0", 0.0, 4.0, "What brings you in? Any allergies?"),
+            ("1", 4.2, 9.0, "Fever for two days."),
+        ])
+
+    def test_async_stt_job_with_per_turn_asr_tasks(self):
+        job = {"tasks": [
+            {"task_type": "asr", "speaker": "1", "start": 0.0, "end": 2.0, "result": {"text": "Hello doctor."}},
+            {"task_type": "asr", "speaker": "0", "start": 2.5, "end": 4.0, "result": {"text": "What brings you in?"}},
+        ]}
+        segs, _ = load_segments(job)
+        self.assertEqual([(s["speaker_id"], s["text"]) for s in segs], [("1", "Hello doctor."), ("0", "What brings you in?")])
+
+    def test_diarization_only_job_explains_missing_text(self):
+        job = {"job_id": "j2", "status": "processing", "tasks": {"t": {"result": {"segments": [{"speaker": "0", "start": 0, "end": 1}]}}}}
+        with self.assertRaisesRegex(ValueError, "no transcribed text yet"):
+            load_segments(job)
+
     def test_bare_list(self):
         segs, audio = load_segments([{"speaker": 0, "start": 0, "end": 2.5, "text": "hi"}])
         self.assertEqual(audio["duration_s"], 2.5)

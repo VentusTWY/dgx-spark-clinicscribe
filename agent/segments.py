@@ -5,7 +5,10 @@ First-layer output looks like:
    "segments": [{"speaker": 0, "start": 1.0, "end": 10.0, "text": "..."}, ...]}
 
 Key names vary between tools, so the loader accepts common spellings
-(see SEGMENT_LIST_KEYS and _segment). Speaker ids (0-8) are mapped to roles
+(see SEGMENT_LIST_KEYS and _segment). It also reads the async_stt job files
+(`{"job_id", "tasks": {id: {"task_type", "audio_path", "result": {...}}}}`):
+diarization segments come from one task and transcribed text from another,
+and the text is attached to the diarized turn it overlaps most (see flatten_job). Speaker ids (0-8) are mapped to roles
 (Doctor / Patient / ...) by Lightning from what each speaker says, with a
 keyword heuristic as fallback.
 """
@@ -61,8 +64,63 @@ def _segment(seg):
     return {"speaker_id": _speaker_id(speaker), "start": round(start, 2), "end": round(end, 2), "text": str(seg.get("text", "")).strip()}
 
 
+def _overlap(a, b):
+    return min(a["end"], b["end"]) - max(a["start"], b["start"])
+
+
+def _merge_turns(segments):
+    """Join consecutive segments from the same speaker into one turn."""
+    merged = []
+    for s in segments:
+        if merged and merged[-1]["speaker_id"] == s["speaker_id"]:
+            last = merged[-1]
+            last["end"] = max(last["end"], s["end"])
+            last["text"] = f"{last['text']} {s['text']}".strip()
+        else:
+            merged.append(dict(s))
+    return merged
+
+
+def flatten_job(job):
+    """Turn an async_stt job file into the flat {wav, total_duration, segments} shape."""
+    tasks = job.get("tasks") or {}
+    tasks = list(tasks.values()) if isinstance(tasks, dict) else list(tasks)
+    diarized, texted, audio_path, duration = [], [], None, None
+    for task in tasks:
+        result = task.get("result")
+        audio_path = audio_path or task.get("audio_path")
+        if isinstance(result, dict):
+            duration = duration or result.get("duration")
+            segs = next((result[k] for k in SEGMENT_LIST_KEYS if isinstance(result.get(k), list)), None)
+        else:
+            segs = result if isinstance(result, list) else None
+        if segs:
+            (texted if any(s.get("text") for s in segs) else diarized).extend(_segment(s) for s in segs)
+        elif isinstance(result, dict) and result.get("text"):
+            # One ASR task per turn: times and speaker may sit on the task or on its result.
+            texted.append(_segment({**task, **result}))
+    diarized.sort(key=lambda s: s["start"])
+    texted.sort(key=lambda s: s["start"])
+    if diarized and texted:
+        for chunk in texted:
+            best = max(diarized, key=lambda d: (_overlap(d, chunk), -abs(d["start"] - chunk["start"])))
+            best["text"] = f"{best['text']} {chunk['text']}".strip()
+        segments = diarized
+    else:
+        segments = texted or diarized
+    if segments and not any(s["text"] for s in segments):
+        raise ValueError(f"Job {job.get('job_id')} has diarization but no transcribed text yet (status: {job.get('status')})")
+    return {
+        "wav": audio_path,
+        "total_duration": duration,
+        "segments": _merge_turns([s for s in segments if s["text"]]),
+    }
+
+
 def load_segments(data):
     """Return (segments, audio_info) from first-layer output (dict or bare list)."""
+    if isinstance(data, dict) and "tasks" in data:
+        data = flatten_job(data)
     if isinstance(data, list):
         raw, top = data, {}
     else:
@@ -79,7 +137,7 @@ def load_segments(data):
 
 
 def is_segment_input(data):
-    return isinstance(data, list) or any(isinstance(data.get(k), list) for k in SEGMENT_LIST_KEYS)
+    return isinstance(data, list) or "tasks" in data or any(isinstance(data.get(k), list) for k in SEGMENT_LIST_KEYS)
 
 
 # --- speaker roles ----------------------------------------------------------
