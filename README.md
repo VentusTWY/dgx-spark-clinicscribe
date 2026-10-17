@@ -4,6 +4,33 @@ A GP consultation goes in as a transcript. Out comes a SOAP note, checked prescr
 drafted MC and the panel billing rules, all produced by NVIDIA Nemotron 3.5 Lightning running
 locally on the team's GIGABYTE AI TOP ATOM. No patient data leaves the clinic.
 
+## Python modules from the original host
+
+The Python files in [`host/async_stt/`](host/async_stt/) were copied from the
+original host's `async_stt` implementation. They document how the host pipeline is
+split into workers; they are not replacement modules for the ClinicScribe agent.
+
+| Repository file | Role in the host pipeline |
+|---|---|
+| [`host/async_stt/pipeline.py`](host/async_stt/pipeline.py) | Orchestrates the pipeline and dispatches work to worker queues. |
+| [`host/async_stt/vad.py`](host/async_stt/vad.py) | Diarization: identifies speaker segments in the audio. |
+| [`host/async_stt/asr.py`](host/async_stt/asr.py) | Transcribes audio segments as separate worker tasks. |
+| [`host/async_stt/llm.py`](host/async_stt/llm.py) | Host summarizer worker using vLLM directly; distinct from `agent/llm.py`. |
+| [`test_asr.py`](test_asr.py) | Submits an audio file to the host pipeline and polls its job files. |
+
+The host setup uses `~/Documents/async_stt` and the `env_edwin` container. The
+gateway startup script expects that project's files at `/workspace` inside the
+container; ClinicScribe runs separately at `/workspace/clinicscribe` in the
+reported deployment. `host/async_stt/` is the repository's source snapshot folder,
+not a required installation path or a verified copy of every host subdirectory.
+
+The original worker deployment also needs `common/job_store.py`, shared job/audio
+storage, Redis/Celery, Ray Serve and model dependencies. Those components and the
+complete deployment configuration are not all included here. When running
+`test_asr.py` from this checkout, set `JOBS_DIR` to the worker's actual shared job
+directory; its default is `data/jobs` relative to the script. Audio paths must also
+be accessible to the workers. See the [host source notes](host/async_stt/README.md).
+
 ## Run the demo (API + UI, fully offline)
 
 On the ATOM, with Lightning already up (`demo kit-up`):

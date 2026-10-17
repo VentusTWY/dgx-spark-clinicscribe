@@ -2,6 +2,14 @@
 
 These four files were supplied from the original host on 17 October 2026 and are preserved unchanged. This directory records those sources; it is not a complete standalone deployment or a verified reproduction of the host directory layout.
 
+They represent the host pipeline's module split: orchestration, diarization,
+segment transcription and summarization. The host project is
+`~/Documents/async_stt`; the gateway script expects it at `/workspace` inside
+`env_edwin`. ClinicScribe's reported container checkout is
+`/workspace/clinicscribe`. Keep these runtime paths distinct from this repository's
+`host/async_stt/` snapshot folder. See the [main README](../../README.md#python-modules-from-the-original-host)
+for the file mapping and diagnostic-client storage requirements.
+
 - `pipeline.py`: Celery/Ray pipeline orchestration.
 - `vad.py`: diarization worker.
 - `asr.py`: speech recognition worker.
