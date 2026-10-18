@@ -12,15 +12,16 @@
     <div class="brand">
       <span class="logo">✚</span>
       <span class="name">ClinicScribe</span>
-      <span class="tag">consult audio → checked SOAP note, MC &amp; panel claim</span>
+      <span class="tag tech">consult audio → checked SOAP note, MC &amp; panel claim</span>
     </div>
     <div class="badges">
-      <span class="badge local">● 100% local · Gigabyte AI TOP ATOM</span>
+      <span class="badge local" id="localBadge">● 100% local · Gigabyte AI TOP ATOM</span>
+      <button class="badge toggle" id="techToggle" aria-pressed="false">Technical details</button>
       <span class="badge mode" id="modeBadge">MOCK</span>
     </div>
   </header>
 
-  <section class="metrics" id="metrics">
+  <section class="metrics tech" id="metrics">
     <div class="metric"><span class="value" id="mAudio">0.0</span><span class="label">audio minutes processed</span></div>
     <div class="metric"><span class="value" id="mWall">0.0 s</span><span class="label">wall time</span></div>
     <div class="metric"><span class="value" id="mRtf">–</span><span class="label">to process 1 min of audio</span><span class="sub" id="mRtfX"></span></div>
@@ -40,7 +41,7 @@
       <button class="btn secondary hidden" id="procShow">Show processing</button>
       <div class="joblist-head">
         <span>Jobs</span>
-        <span class="legend"><i class="chip doctor done"></i>Doctor <i class="chip patient done"></i>Patient</span>
+        <span class="legend tech"><i class="chip doctor done"></i>Doctor <i class="chip patient done"></i>Patient</span>
       </div>
       <ul class="joblist" id="jobList"></ul>
     </aside>
@@ -48,14 +49,15 @@
     <section class="detail" id="detail">
       <div class="empty" id="emptyState">
         <p>Upload consults or load the demo batch.</p>
-        <p class="muted">Pick a job to see its transcript, SOAP note, tool calls and flags.</p>
+        <p class="muted" id="emptyHint">Pick a job to see its transcript, SOAP note, tool calls and flags.</p>
       </div>
 
       <div class="detail-body hidden" id="detailBody">
         <div class="detail-head">
           <div>
             <h2 id="dTitle"></h2>
-            <div class="stages" id="dStages"></div>
+            <div class="stages tech" id="dStages"></div>
+            <div class="plain-status" id="dPlain"></div>
             <div class="banner" id="dBanner"></div>
           </div>
           <button class="btn approve" id="approveBtn" disabled>Approve</button>
@@ -72,17 +74,17 @@
             <div class="soap" id="dSoap"></div>
           </div>
 
-          <div class="panel">
+          <div class="panel tech">
             <h3>Agent tool calls</h3>
             <ol class="tools" id="dTools"></ol>
           </div>
 
-          <div class="panel">
-            <h3>Checks</h3>
+          <div class="panel review-panel">
+            <h3 id="checksTitle">Checks</h3>
             <div id="dFlags"></div>
             <div id="dMc"></div>
             <div id="dDrugs"></div>
-            <div class="timings" id="dTimings"></div>
+            <div class="timings tech" id="dTimings"></div>
           </div>
         </div>
       </div>

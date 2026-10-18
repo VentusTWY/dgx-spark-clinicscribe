@@ -74,6 +74,39 @@
   $("modeBadge").classList.add(api.kind === "mock" ? "mock" : "live");
   if (api.kind !== "mock") $("demoBtn").classList.add("hidden");
 
+  // ---------- view ----------
+  // Clinician view (default) shows what a doctor acts on: transcript, SOAP note, items to review,
+  // MC and prescriptions, and Approve. "Technical details" adds the pipeline, models, tool calls and
+  // metrics for demos. ?view=tech or ?view=clinician overrides the remembered choice.
+  const VIEW_KEY = "clinicscribe.view";
+  let clinician = true;
+  try { clinician = localStorage.getItem(VIEW_KEY) !== "tech"; } catch (_) { /* storage blocked */ }
+  const forcedView = new URLSearchParams(location.search).get("view");
+  if (forcedView === "tech" || forcedView === "clinician") clinician = forcedView === "clinician";
+  function applyView() {
+    document.body.classList.toggle("clinician", clinician);
+    $("techToggle").setAttribute("aria-pressed", String(!clinician));
+    $("localBadge").textContent = clinician ? "● Runs in the clinic: no patient data leaves" : "● 100% local · Gigabyte AI TOP ATOM";
+    $("checksTitle").textContent = clinician ? "To review before approving" : "Checks";
+    $("emptyHint").textContent = clinician
+      ? "Pick a consult to review its note."
+      : "Pick a job to see its transcript, SOAP note, tool calls and flags.";
+  }
+  $("techToggle").addEventListener("click", () => {
+    clinician = !clinician;
+    try { localStorage.setItem(VIEW_KEY, clinician ? "clinician" : "tech"); } catch (_) { /* storage blocked */ }
+    applyView();
+    detailKey = "";
+    renderJobs();
+    renderDetail();
+    renderOverlay();
+  });
+  applyView();
+  const PLAIN_STATUS = {
+    queued: "Waiting", diarizing: "Transcribing", transcribing: "Transcribing",
+    summarising: "Writing note", done: "Ready to review", failed: "Couldn't process",
+  };
+
   let jobs = [];
   let selectedId = null;
   const seenTurns = new Map();       // job_id -> Set of turn idx already shown done (for chip glow)
@@ -154,7 +187,8 @@
   });
   document.addEventListener("keydown", (e) => e.key === "Escape" && overlayOpen && hideOverlay());
 
-  const PROC_STEPS = [["upload", "Upload"], ["first", "Diarization + ASR"], ["agent", "Lightning agent"], ["done", "Done"]];
+  const PROC_STEPS_TECH = [["upload", "Upload"], ["first", "Diarization + ASR"], ["agent", "Lightning agent"], ["done", "Done"]];
+  const PROC_STEPS_PLAIN = [["upload", "Upload"], ["first", "Transcribe"], ["agent", "Write note"], ["done", "Ready"]];
   function procState(entry) {
     const j = entry.jobId && jobs.find((x) => x.job_id === entry.jobId);
     if (entry.error) return { step: "upload", failed: true, label: entry.error };
@@ -171,13 +205,13 @@
       case "queued":
         return { step: "first", label: "Waiting in the queue" };
       case "diarizing":
-        return { step: "first", label: "Finding who speaks when and transcribing" };
+        return { step: "first", label: clinician ? "Transcribing the consult" : "Finding who speaks when and transcribing" };
       case "transcribing":
         return j.turns.length
           ? { step: "first", pct: (100 * doneTurns) / j.turns.length, label: `Transcribed ${doneTurns} of ${j.turns.length} speaker turns`, line }
           : { step: "first", label: "Transcribing" };
       case "summarising":
-        return { step: "agent", label: "Lightning is writing the SOAP note and checking drugs, MC and panel rules", line: j.turns.length ? `${j.turns.length} turns transcribed` : "" };
+        return { step: "agent", label: clinician ? "Writing the SOAP note and checking drugs, MC and panel rules" : "Lightning is writing the SOAP note and checking drugs, MC and panel rules", line: j.turns.length ? `${j.turns.length} turns transcribed` : "" };
       case "done": {
         const t = j.result?.timings || {};
         return { step: "done", pct: 100, label: `Done in ${fmtSecs(t.total_s ?? (j.finished_at - j.created_at))}${j.result?.cached ? " (cached result)" : ""}`, open: j.job_id };
@@ -199,10 +233,11 @@
     $("procShow").textContent = finished === tracked.length ? "Show processing results" : `Show processing (${tracked.length - finished} running)`;
     $("procNote").textContent = api.kind === "mock"
       ? "Mock data: this run is simulated in the browser."
-      : "Live: every stage runs on the ATOM. You can hide this window; jobs keep running.";
+      : clinician ? "You can close this window. Consults keep processing." : "Live: every stage runs on the ATOM. You can hide this window; jobs keep running.";
     if (!overlayOpen) return;
     $("procList").innerHTML = tracked.map((entry, i) => {
       const st = states[i];
+      const PROC_STEPS = clinician ? PROC_STEPS_PLAIN : PROC_STEPS_TECH;
       const idx = PROC_STEPS.findIndex(([k]) => k === st.step);
       const steps = PROC_STEPS.map(([k, label], n) =>
         `<span class="proc-step ${n < idx || st.step === "done" ? "complete" : n === idx && !st.failed ? "active" : ""}">${label}</span>`).join("");
@@ -248,20 +283,22 @@
           }).join("")
         : `<span class="pending-diar">${j.status === "queued" ? "waiting for diarization…" : j.status === "diarizing" ? "finding speaker turns…" : ""}</span>`;
       const flags = j.result ? j.result.flags.filter(isAlert).length : 0;
-      const label = j.status === "transcribing" ? `transcribing ${done}/${j.turns.length}` : j.status;
+      const label = clinician
+        ? (j.approved ? "Approved" : PLAIN_STATUS[j.status] || j.status)
+        : j.status === "transcribing" ? `transcribing ${done}/${j.turns.length}` : j.status;
       return `<li class="job${j.job_id === selectedId ? " selected" : ""}" data-id="${esc(j.job_id)}">
         <div class="job-top">
           <span class="job-name">${esc(j.filename)}</span>
           <span class="status ${esc(j.status)}">${esc(label)}</span>
         </div>
         <div class="job-meta">
-          <span>${esc(j.job_id)}</span>
+          <span class="tech">${esc(j.job_id)}</span>
           ${j.audio_s ? `<span>${fmtTime(j.audio_s)} audio</span>` : ""}
-          ${j.result ? `<span>${fmtSecs(j.result.timings.total_s)} total</span>` : ""}
-          ${flags ? `<span class="job-flag">⚑ ${flags} FLAG${flags > 1 ? "S" : ""}</span>` : ""}
+          ${j.result ? `<span class="tech">${fmtSecs(j.result.timings.total_s)} total</span>` : ""}
+          ${flags ? `<span class="job-flag">⚑ ${flags} ${clinician ? "to review" : `FLAG${flags > 1 ? "S" : ""}`}</span>` : ""}
           ${j.approved ? `<span style="color:var(--accent)">✓ approved</span>` : ""}
         </div>
-        <div class="chips">${chips}</div>
+        <div class="chips tech">${chips}</div>
       </li>`;
     }).join("");
     // Mark turns as seen after one paint so the glow shows once.
@@ -344,17 +381,19 @@
   }
 
   const FLAG_LABEL = { critical: "CRITICAL", warning: "FLAG", info: "NOTE" };
+  const flagLabel = (sev) => (clinician && sev === "warning" ? "REVIEW" : FLAG_LABEL[sev] || "FLAG");
   function renderChecks(r) {
     $("dBanner").innerHTML = (r.cached ? '<span class="cached-pill">Cached result from an earlier run: Lightning was unavailable</span>' : "") + r.flags.filter(isAlert)
-      .map((f) => `<span class="pill ${esc(f.severity)}"><b>⚑ ${FLAG_LABEL[f.severity] || "FLAG"}</b>${esc(f.issue)}</span>`).join("");
-    const flags = r.flags.map((f) => `<div class="flag-card ${esc(f.severity)}${f.verified ? "" : " unverified"}">
-        <span class="verify">${f.verified ? esc(f.source || "verified") : "dropped by verifier"}</span>
-        <span class="flag-label">${FLAG_LABEL[f.severity] || "FLAG"}</span><span class="issue">${esc(f.issue)}</span>
+      .map((f) => `<span class="pill ${esc(f.severity)}"><b>⚑ ${flagLabel(f.severity)}</b>${esc(f.issue)}</span>`).join("");
+    // Flags the verifier dropped are pipeline detail, so the clinician view leaves them out.
+    const flags = r.flags.filter((f) => !clinician || f.verified).map((f) => `<div class="flag-card ${esc(f.severity)}${f.verified ? "" : " unverified"}">
+        <span class="verify tech">${f.verified ? esc(f.source || "verified") : "dropped by verifier"}</span>
+        <span class="flag-label">${flagLabel(f.severity)}</span><span class="issue">${esc(f.issue)}</span>
         ${f.fix ? `<div class="fix">Fix: ${esc(f.fix)}</div>` : ""}
       </div>`).join("");
     const v = r.verification;
     const verifier = v
-      ? `<div class="kv"><div class="k">Verifier</div><div class="v">${v.passed ? '<span class="ok-text">✓ passed, every claim found in the transcript</span>' : `<span class="bad-text">✗ ${(v.unsupported || []).length} unsupported, ${(v.missing || []).length} missing</span>`}</div></div>`
+      ? `<div class="kv tech"><div class="k">Verifier</div><div class="v">${v.passed ? '<span class="ok-text">✓ passed, every claim found in the transcript</span>' : `<span class="bad-text">✗ ${(v.unsupported || []).length} unsupported, ${(v.missing || []).length} missing</span>`}</div></div>`
       : "";
     $("dFlags").innerHTML = (flags || `<div class="ok-card">✓ No panel or rule issues found</div>`) + verifier;
 
@@ -442,6 +481,8 @@
     $("dTitle").textContent = j.filename;
     if (jobChanged || j.status !== "done") $("dBanner").innerHTML = "";
     $("dStages").innerHTML = renderStages(j);
+    $("dPlain").textContent = j.status === "failed" ? `Couldn't process this file: ${j.error || "unknown error"}`
+      : j.approved ? "Approved" : j.status === "done" ? "Ready for your review" : `${PLAIN_STATUS[j.status] || j.status}…`;
     const tr = $("dTranscript");
     const atBottom = tr.scrollHeight - tr.scrollTop - tr.clientHeight < 40;
     tr.innerHTML = renderTranscript(j);
@@ -453,7 +494,7 @@
     btn.classList.toggle("approved", !!j.approved);
 
     if (j.status === "done" && j.result) {
-      if (!animated.has(j.job_id)) {
+      if (!animated.has(j.job_id) && !clinician) {
         animated.add(j.job_id);
         $("dTools").innerHTML = "";
         $("dFlags").innerHTML = $("dMc").innerHTML = $("dDrugs").innerHTML = $("dTimings").innerHTML = "";
@@ -467,7 +508,7 @@
       }
     } else {
       clearInterval(typing); typing = null;
-      const waiting = j.status === "summarising" ? "Lightning is writing the note…" : j.status === "failed" ? "Job failed." : "Waiting for the transcript…";
+      const waiting = j.status === "summarising" ? (clinician ? "Writing the note…" : "Lightning is writing the note…") : j.status === "failed" ? "Job failed." : "Waiting for the transcript…";
       $("soapState").textContent = j.status === "summarising" ? "thinking…" : "";
       $("dSoap").innerHTML = `<p class="muted${j.status === "summarising" ? " cursor" : ""}">${waiting}</p>`;
       $("dTools").innerHTML = `<li class="muted">No tool calls yet.</li>`;

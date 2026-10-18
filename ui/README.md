@@ -76,6 +76,13 @@ The UI polls `GET /jobs` once a second. A `Job` looks like:
 - Optional: `timings.llm_tokens` (completion tokens) powers the "Lightning tokens/s" metric.
 - `created_at` / `finished_at` (epoch seconds) drive the wall-time and real-time-factor metrics.
 
+## Clinician view and technical details
+
+The page opens in the clinician view: consult list, transcript, SOAP note, the items to review
+(flags, MC, prescriptions, panel rules) and Approve. Model names, pipeline stages, tool calls,
+timings and the metrics bar are hidden. The "Technical details" button in the header shows them
+for demos; the choice is remembered per browser, and `?view=tech` or `?view=clinician` forces one.
+
 ## What the metrics bar measures
 
 In LIVE mode every number comes from the backend; nothing is estimated in the browser.
