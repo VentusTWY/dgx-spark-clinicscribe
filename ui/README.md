@@ -87,6 +87,9 @@ the agent's tool calls, flags the verifier dropped, and the metrics bar. Use it 
 debugging. Each page links to the other from the header. With the real backend both pages show
 the same jobs; in mock mode each page runs its own simulation.
 
+On phones (860 px wide or less) both pages switch to one column. The consult list and the
+open consult take turns on screen, with an "All consults" button to go back.
+
 ## What the metrics bar measures
 
 In LIVE mode every number comes from the backend; nothing is estimated in the browser.

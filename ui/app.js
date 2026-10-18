@@ -93,6 +93,14 @@
     summarising: "Writing note", done: "Ready to review", failed: "Couldn't process",
   };
 
+  // On a phone the list and the open consult take turns on screen (styles.css, max-width 860px):
+  // opening a consult shows it, "All consults" goes back. Wider screens show both and ignore this.
+  function showDetail(on) {
+    document.body.classList.toggle("show-detail", on);
+    if (on) window.scrollTo(0, 0);
+  }
+  $("backBtn").addEventListener("click", () => showDetail(false));
+
   let jobs = [];
   let selectedId = null;
   const seenTurns = new Map();       // job_id -> Set of turn idx already shown done (for chip glow)
@@ -166,6 +174,7 @@
     const btn = e.target.closest("[data-open]");
     if (!btn) return;
     selectedId = btn.dataset.open;
+    showDetail(true);
     detailKey = "";
     hideOverlay();
     renderJobs();
@@ -245,6 +254,7 @@
         const first = states.find((st) => st.open);
         if (overlayOpen && first) {
           selectedId = first.open;
+          showDetail(true);
           detailKey = "";
           hideOverlay();
           renderJobs();
@@ -298,6 +308,7 @@
     const li = e.target.closest(".job");
     if (!li) return;
     selectedId = li.dataset.id;
+    showDetail(true);
     detailKey = "";
     renderJobs();
     renderDetail();

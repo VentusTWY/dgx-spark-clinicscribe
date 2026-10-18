@@ -250,9 +250,40 @@ body:not(.clinician) .plain-status { display: none; }
   .layout { grid-template-columns: 340px 1fr; }
   .metrics { grid-template-columns: repeat(3, 1fr); }
 }
+.btn.back { display: none; }
+
+/* Phones and narrow tablets: one column, normal page scrolling, and the consult list and the open
+   consult take turns on screen (app.js showDetail toggles body.show-detail). */
 @media (max-width: 860px) {
-  .layout { grid-template-columns: 1fr; }
-  .sidebar { border-right: 0; border-bottom: 1px solid var(--border); max-height: 50vh; }
-  .grid { grid-template-columns: 1fr; }
+  html, body { height: auto; }
+  body { min-height: 100%; }
+  .topbar { padding: 10px 16px; gap: 8px; }
+  .logo, .name { font-size: 1.3rem; }
+  .tag { display: none; }
+  .badges { flex-wrap: wrap; gap: 6px; }
+  .badge { font-size: 0.75rem; padding: 4px 10px; }
   .metrics { grid-template-columns: repeat(2, 1fr); }
+  .metric { padding: 10px 14px; }
+  .metric .value { font-size: 1.4rem; }
+  .metric .label, .metric .sub { font-size: 0.7rem; }
+  .layout { display: block; }
+  .sidebar { border-right: 0; padding: 14px 16px; overflow: visible; }
+  .detail { padding: 14px 16px; overflow: visible; }
+  body.show-detail .sidebar { display: none; }
+  body:not(.show-detail) .detail { display: none; }
+  .btn.back { display: inline-block; margin-bottom: 12px; padding: 8px 14px; }
+  .detail-head { flex-direction: column; align-items: stretch; gap: 10px; }
+  .detail-head h2 { font-size: 1.2rem; }
+  .btn.approve { width: 100%; }
+  .grid, .clinician .grid { grid-template-columns: 1fr; grid-template-areas: none; }
+  body.clinician .grid > .panel:nth-child(n) { grid-area: auto; }
+  .transcript, .soap { max-height: none; }
+  .turn { grid-template-columns: 64px 1fr; gap: 8px; }
+  .soap-row { grid-template-columns: 26px 1fr; }
+  .timings { grid-template-columns: repeat(2, 1fr); }
+  .tool { overflow-wrap: anywhere; }
+  .flag-card { overflow-wrap: anywhere; }
+  .overlay { padding: 10px; align-items: flex-end; }
+  .proc-card { max-height: 92vh; padding: 16px; border-radius: 14px; }
+  .proc-head h2 { font-size: 1.2rem; }
 }
