@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# ClinicScribe launcher: one command to install and run the demo, no Docker needed.
+#
+#   ./clinicscribe                 install on first run, then serve the API + UI on :8080
+#   ./clinicscribe install         create .venv and install requirements.txt (offline from vendor/wheels if present)
+#   ./clinicscribe vendor          download the wheels into vendor/wheels while online
+#   ./clinicscribe bundle          vendor + pack repo and wheels into dist/clinicscribe-offline.tar.gz
+#   ./clinicscribe check           is Lightning up and does tool calling work (scripts/check_server.sh)
+#   ./clinicscribe agent FILE ...  run the agent on one transcript (python -m agent)
+#   ./clinicscribe test            run the unit tests
+#
+# Env: PYTHON (interpreter for the venv, default python3), VENV (default .venv),
+#      VENDOR_PLATFORM / VENDOR_PYTHON to vendor wheels for another machine, e.g. from a Mac:
+#      VENDOR_PLATFORM=manylinux_2_17_aarch64 VENDOR_PYTHON=3.12 ./clinicscribe vendor
+# Everything start_demo.sh reads (LLM_BASE_URL, PORT, STT_API, ...) passes through.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$ROOT"
+PYTHON="${PYTHON:-python3}"
+VENV="${VENV:-$ROOT/.venv}"
+WHEELS="$ROOT/vendor/wheels"
+VPY="$VENV/bin/python"
+
+have_wheels() { compgen -G "$WHEELS/*.whl" >/dev/null; }
+
+pip_install() {  # pip_install ARGS... : install into the venv, offline when wheels are vendored
+  if have_wheels; then
+    "$VPY" -m pip install --disable-pip-version-check --no-index --find-links "$WHEELS" "$@"
+  else
+    "$VPY" -m pip install --disable-pip-version-check "$@"
+  fi
+}
+
+make_venv() {
+  "$PYTHON" -c 'import sys; sys.exit(sys.version_info < (3, 9))' \
+    || { echo "Need Python 3.9 or newer ($PYTHON is $("$PYTHON" -V 2>&1))."; exit 1; }
+  if "$PYTHON" -m venv "$VENV" 2>/dev/null; then return; fi
+  # Ubuntu without python3-venv has no ensurepip: make a bare venv and bring pip in another way.
+  rm -rf "$VENV"
+  "$PYTHON" -m venv --without-pip "$VENV" \
+    || { echo "Could not create a venv. Install python3-venv (sudo apt install python3-venv) and retry."; exit 1; }
+  local pipwhl
+  pipwhl=$(compgen -G "$WHEELS/pip-*.whl" | head -n1 || true)
+  if [ -n "$pipwhl" ]; then
+    "$VPY" "$pipwhl/pip" install --disable-pip-version-check --no-index --find-links "$WHEELS" pip
+  elif "$PYTHON" -m pip --version >/dev/null 2>&1; then
+    "$PYTHON" -m pip --python "$VPY" install --disable-pip-version-check pip
+  else
+    rm -rf "$VENV"
+    echo "No pip available. Install python3-venv, or run ./clinicscribe vendor on a machine with pip and copy vendor/ here."
+    exit 1
+  fi
+}
+
+cmd_install() {
+  [ -x "$VPY" ] && "$VPY" -m pip --version >/dev/null 2>&1 || make_venv
+  if have_wheels; then echo "Installing from vendor/wheels (offline)"; else echo "Installing from PyPI (needs network once)"; fi
+  pip_install -r requirements.txt
+  "$VPY" -c 'import sys, fastapi, uvicorn; print("Ready: fastapi", fastapi.__version__, "uvicorn", uvicorn.__version__, "in", sys.prefix)'
+}
+
+cmd_vendor() {
+  mkdir -p "$WHEELS"
+  local py="$PYTHON"; [ -x "$VPY" ] && "$VPY" -m pip --version >/dev/null 2>&1 && py="$VPY"
+  local args=(-r requirements.txt pip)
+  if [ -n "${VENDOR_PLATFORM:-}" ]; then
+    args+=(--only-binary=:all: --platform "$VENDOR_PLATFORM" --python-version "${VENDOR_PYTHON:-3.12}")
+  fi
+  "$py" -m pip download --disable-pip-version-check -d "$WHEELS" "${args[@]}"
+  echo "Wheels in vendor/wheels: $(ls "$WHEELS" | wc -l). ./clinicscribe install now works with Wi-Fi off."
+}
+
+cmd_bundle() {
+  have_wheels || cmd_vendor
+  mkdir -p dist
+  local out="dist/clinicscribe-offline.tar.gz" tmp
+  tmp=$(mktemp -d)
+  git archive --format=tar --prefix=clinicscribe/ HEAD | tar -x -C "$tmp"
+  mkdir -p "$tmp/clinicscribe/vendor" && cp -r "$WHEELS" "$tmp/clinicscribe/vendor/"
+  tar -czf "$out" -C "$tmp" clinicscribe && rm -rf "$tmp"
+  echo "Bundle: $out ($(du -h "$out" | cut -f1)). On the target: tar xzf it, cd clinicscribe, ./clinicscribe"
+}
+
+ensure_installed() {
+  "$VPY" -c 'import fastapi, uvicorn' 2>/dev/null || cmd_install
+}
+
+case "${1:-start}" in
+  install) cmd_install ;;
+  vendor)  cmd_vendor ;;
+  bundle)  cmd_bundle ;;
+  start)   ensure_installed; PYTHON="$VPY" exec ./scripts/start_demo.sh ;;
+  check)   exec ./scripts/check_server.sh ;;
+  agent)   shift; ensure_installed; exec "$VPY" -m agent "$@" ;;
+  test)    ensure_installed; exec "$VPY" -m unittest discover tests ;;
+  -h|--help|help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) echo "Unknown command: $1 (try ./clinicscribe help)"; exit 2 ;;
+esac

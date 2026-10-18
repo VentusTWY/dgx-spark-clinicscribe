@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
 # One command for the demo: checks Lightning, then serves the API + UI on :8080.
-# Usage: ./scripts/start_demo.sh            (Lightning must already be up: `demo kit-up`)
-# Optional env: LLM_BASE_URL, LLM_MODEL, STT_API / STT_URL / STT_CMD (first layer), PORT, AGENT_WORKERS
+# Usage: ./clinicscribe   (or ./scripts/start_demo.sh)   Lightning must already be up: `demo kit-up`
+# Optional env: LLM_BASE_URL, LLM_MODEL, STT_API / STT_URL / STT_CMD (first layer), PORT, AGENT_WORKERS,
+#               PYTHON (default: .venv/bin/python from ./clinicscribe install, else python3)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export LLM_BASE_URL="${LLM_BASE_URL:-http://127.0.0.1:9000/v1}"
 export PORT="${PORT:-8080}"
 export NO_PROXY="127.0.0.1,localhost${NO_PROXY:+,$NO_PROXY}"
 
-python3 -c "import fastapi, uvicorn" 2>/dev/null || { echo "Missing packages: pip install fastapi uvicorn (do it while online)"; exit 1; }
+if [ -z "${PYTHON:-}" ]; then
+  if [ -x .venv/bin/python ]; then PYTHON=.venv/bin/python; else PYTHON=python3; fi
+fi
+"$PYTHON" -c "import fastapi, uvicorn" 2>/dev/null || { echo "Missing fastapi/uvicorn for $PYTHON. Run ./clinicscribe install (offline if vendor/wheels exists)."; exit 1; }
 
 if curl -sf --max-time 5 "$LLM_BASE_URL/models" >/dev/null; then
   echo "Lightning: up at $LLM_BASE_URL"
@@ -27,4 +31,4 @@ fi
 
 IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 echo "ClinicScribe: http://localhost:$PORT  ${IP:+(from another machine: http://$IP:$PORT)}"
-exec python3 -m server
+exec "$PYTHON" -m server
