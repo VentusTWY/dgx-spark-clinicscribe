@@ -1,0 +1,4 @@
+# Runtime packages for the ClinicScribe API + UI (server/). The agent itself is stdlib only.
+# Installed into .venv by ./clinicscribe install; ./clinicscribe vendor saves them as wheels for offline installs.
+fastapi>=0.110,<1
+uvicorn>=0.29,<1

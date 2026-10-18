@@ -33,10 +33,21 @@
     }
     async list() { return this._json(await fetch(`${this.base}/jobs`)); }
     async get(id) { return this._json(await fetch(`${this.base}/jobs/${encodeURIComponent(id)}`)); }
-    async upload(file) {
-      const fd = new FormData();
-      fd.append("file", file, file.name);
-      return this._json(await fetch(`${this.base}/jobs`, { method: "POST", body: fd }));
+    // XHR rather than fetch so the processing window can show upload progress.
+    upload(file, onProgress = () => {}) {
+      return new Promise((resolve, reject) => {
+        const fd = new FormData();
+        fd.append("file", file, file.name);
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `${this.base}/jobs`);
+        xhr.upload.onprogress = (e) => e.lengthComputable && onProgress((100 * e.loaded) / e.total);
+        xhr.onload = () => {
+          if (xhr.status < 200 || xhr.status >= 300) return reject(new Error(`${xhr.status} ${xhr.responseText.slice(0, 200)}`));
+          try { resolve(JSON.parse(xhr.responseText)); } catch (e) { reject(e); }
+        };
+        xhr.onerror = () => reject(new Error("network error"));
+        xhr.send(fd);
+      });
     }
     async approve(id) {
       return this._json(await fetch(`${this.base}/jobs/${encodeURIComponent(id)}/approve`, { method: "POST" }));
@@ -63,7 +74,8 @@
       if (!j) throw new Error("404 job not found");
       return this._public(j);
     }
-    async upload(file) {
+    async upload(file, onProgress = () => {}) {
+      onProgress(100);
       const consults = window.MOCK_CONSULTS;
       // The hero consult goes to files that look like it, otherwise round-robin.
       let idx = this.seq % consults.length;

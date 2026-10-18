@@ -49,6 +49,8 @@
       verification: r.verification || null,
       tool_calls,
       timings,
+      // Served from out/<stem>.result.json because Lightning failed: not a measurement of this run.
+      cached: !!r.meta?.cached,
     };
   }
   const isAlert = (f) => f.verified && f.severity !== "info";
@@ -72,6 +74,33 @@
   $("modeBadge").classList.add(api.kind === "mock" ? "mock" : "live");
   if (api.kind !== "mock") $("demoBtn").classList.add("hidden");
 
+  // ---------- view ----------
+  // The main page is the clinician view: transcript, SOAP note, items to review, MC and
+  // prescriptions, and Approve. /dashboard/ (body data-view="tech") is the same app with the
+  // pipeline, models, tool calls and metrics shown, for demos and debugging.
+  const clinician = document.body.dataset.view !== "tech";
+  function applyView() {
+    document.body.classList.toggle("clinician", clinician);
+    $("localBadge").textContent = clinician ? "● Runs in the clinic: no patient data leaves" : "● 100% local · Gigabyte AI TOP ATOM";
+    $("checksTitle").textContent = clinician ? "To review before approving" : "Checks";
+    $("emptyHint").textContent = clinician
+      ? "Pick a consult to review its note."
+      : "Pick a job to see its transcript, SOAP note, tool calls and flags.";
+  }
+  applyView();
+  const PLAIN_STATUS = {
+    queued: "Waiting", diarizing: "Transcribing", transcribing: "Transcribing",
+    summarising: "Writing note", done: "Ready to review", failed: "Couldn't process",
+  };
+
+  // On a phone the list and the open consult take turns on screen (styles.css, max-width 860px):
+  // opening a consult shows it, "All consults" goes back. Wider screens show both and ignore this.
+  function showDetail(on) {
+    document.body.classList.toggle("show-detail", on);
+    if (on) window.scrollTo(0, 0);
+  }
+  $("backBtn").addEventListener("click", () => showDetail(false));
+
   let jobs = [];
   let selectedId = null;
   const seenTurns = new Map();       // job_id -> Set of turn idx already shown done (for chip glow)
@@ -79,17 +108,34 @@
   let detailKey = "";                // what the detail view currently shows, to avoid needless re-renders
   let typing = null;                 // active typewriter timer
 
+  const originalAudioUrls = new Map();
+  window.addEventListener("pagehide", (event) => {
+    if (!event.persisted) originalAudioUrls.forEach((url) => URL.revokeObjectURL(url));
+  });
+
   // ---------- upload ----------
   const dz = $("dropzone");
   const input = $("fileInput");
   async function uploadFiles(files) {
-    for (const f of files) {
+    const entries = files.map((f) => track({ filename: f.name, uploadPct: 0 }));
+    openOverlay();
+    for (const [i, f] of files.entries()) {
+      const entry = entries[i];
+      entry.uploading = true;
+      entry.startedAt = Date.now();
       try {
-        const { job_id } = await api.upload(f);
+        const { job_id } = await api.upload(f, (pct) => { entry.uploadPct = pct; renderOverlay(); });
+        entry.jobId = job_id;
+        if (f.type.startsWith("audio/") || /\.(wav|mp3|m4a|flac|ogg|aac|webm)$/i.test(f.name)) {
+          originalAudioUrls.set(job_id, URL.createObjectURL(f));
+        }
         if (!selectedId) selectedId = job_id;
-      } catch (e) { alert(`Upload failed for ${f.name}: ${e.message}`); }
+      } catch (e) {
+        entry.error = `Upload failed: ${e.message}`;
+      }
+      entry.uploading = false;
+      refresh();
     }
-    refresh();
   }
   input.addEventListener("change", () => { uploadFiles([...input.files]); input.value = ""; });
   ["dragenter", "dragover"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add("over"); }));
@@ -98,14 +144,166 @@
   $("demoBtn").addEventListener("click", async () => {
     const ids = await api.loadDemoBatch(10);
     if (!selectedId) selectedId = ids[0];
+    ids.forEach((id, i) => track({ jobId: id, filename: window.MOCK_CONSULTS[i === 0 ? 0 : 1 + ((i - 1) % (window.MOCK_CONSULTS.length - 1))].name, startedAt: Date.now() }));
+    openOverlay();
     refresh();
   });
+
+  // Relative sample URLs also work when the UI is hosted under /clinicscribe/.
+  const audioSamples = ["1.wav", "2.wav", "3.wav", "4.wav", "5.wav", "6.wav"];
+  const textSamples = ["4468919.txt", "4468679.txt", "4469528.txt"];
+  $("sampleFiles").innerHTML = audioSamples.map((name) => `
+    <div class="sample-file">
+      <strong>${name}</strong>
+      <audio controls preload="none" src="samples/${name}" aria-label="Play sample ${name}"></audio>
+      <div><a href="samples/${name}" download>Download</a>
+      <button class="btn secondary" data-sample="${name}">${api.kind === "mock" ? "Simulate demo" : "Process audio"}</button></div>
+    </div>`).join("") + `<h4>Text references</h4>` + textSamples.map((name) => `
+    <p><a href="samples/${name}" target="_blank" rel="noopener">${name}</a> · <a href="samples/${name}" download>Download</a></p>`).join("");
+  $("sampleNote").textContent = api.kind === "mock"
+    ? "Audio playback is real. Simulate demo uses canned results, not transcription of the recording. Connect the backend for real processing."
+    : "Process audio sends the recording to the configured backend.";
+  $("sampleFiles").addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-sample]");
+    if (!button || button.disabled) return;
+    button.disabled = true;
+    try {
+      const response = await fetch(`samples/${encodeURIComponent(button.dataset.sample)}`);
+      if (!response.ok) throw new Error(`Sample download failed (${response.status})`);
+      await uploadFiles([new File([await response.blob()], button.dataset.sample, { type: "audio/wav" })]);
+    } catch (error) {
+      $("sampleNote").textContent = error.message;
+    } finally { button.disabled = false; }
+  });
+  document.addEventListener("play", (event) => {
+    if (event.target.tagName === "AUDIO") {
+      document.querySelectorAll("audio").forEach((audio) => { if (audio !== event.target) audio.pause(); });
+    }
+  }, true);
 
   $("approveBtn").addEventListener("click", async () => {
     if (!selectedId) return;
     await api.approve(selectedId);
     refresh();
   });
+
+  // ---------- processing window ----------
+  // Opens on upload and follows each uploaded job through the real job status from the API:
+  // upload progress, queue, diarization + ASR (turn count when the first layer reports turns),
+  // the Lightning agent, then done. Hiding it keeps the jobs running.
+  let tracked = [];
+  let overlayOpen = false;
+  let closeTimer = null;
+  const track = (entry) => { tracked.push(entry); return entry; };
+  function openOverlay() {
+    overlayOpen = true;
+    clearTimeout(closeTimer);
+    $("procOverlay").classList.remove("hidden");
+    $("procShow").classList.add("hidden");
+    renderOverlay();
+  }
+  function hideOverlay() {
+    overlayOpen = false;
+    $("procOverlay").classList.add("hidden");
+    $("procShow").classList.toggle("hidden", !tracked.length);
+  }
+  $("procHide").addEventListener("click", hideOverlay);
+  $("procShow").addEventListener("click", openOverlay);
+  $("procOverlay").addEventListener("click", (e) => {
+    if (e.target.id === "procOverlay") return hideOverlay();
+    const btn = e.target.closest("[data-open]");
+    if (!btn) return;
+    selectedId = btn.dataset.open;
+    showDetail(true);
+    detailKey = "";
+    hideOverlay();
+    renderJobs();
+    renderDetail();
+  });
+  document.addEventListener("keydown", (e) => e.key === "Escape" && overlayOpen && hideOverlay());
+
+  const PROC_STEPS_TECH = [["upload", "Upload"], ["first", "Diarization + ASR"], ["agent", "Lightning agent"], ["done", "Done"]];
+  const PROC_STEPS_PLAIN = [["upload", "Upload"], ["first", "Transcribe"], ["agent", "Write note"], ["done", "Ready"]];
+  function procState(entry) {
+    const j = entry.jobId && jobs.find((x) => x.job_id === entry.jobId);
+    if (entry.error) return { step: "upload", failed: true, label: entry.error };
+    if (!entry.jobId) {
+      return entry.uploading
+        ? { step: "upload", pct: entry.uploadPct, label: `Uploading ${Math.round(entry.uploadPct)}%` }
+        : { step: "upload", pct: 0, label: "Waiting to upload" };
+    }
+    if (!j) return { step: "first", label: "Starting…" };
+    const doneTurns = j.turns.filter((t) => t.done).length;
+    const last = [...j.turns].reverse().find((t) => t.done && t.text);
+    const line = last ? `${last.speaker}: ${last.text}` : "";
+    switch (j.status) {
+      case "queued":
+        return { step: "first", label: "Waiting in the queue" };
+      case "diarizing":
+        return { step: "first", label: clinician ? "Transcribing the consult" : "Finding who speaks when and transcribing" };
+      case "transcribing":
+        return j.turns.length
+          ? { step: "first", pct: (100 * doneTurns) / j.turns.length, label: `Transcribed ${doneTurns} of ${j.turns.length} speaker turns`, line }
+          : { step: "first", label: "Transcribing" };
+      case "summarising":
+        return { step: "agent", label: clinician ? "Writing the SOAP note and checking drugs, MC and panel rules" : "Lightning is writing the SOAP note and checking drugs, MC and panel rules", line: j.turns.length ? `${j.turns.length} turns transcribed` : "" };
+      case "done": {
+        const t = j.result?.timings || {};
+        return { step: "done", pct: 100, label: `Done in ${fmtSecs(t.total_s ?? (j.finished_at - j.created_at))}${j.result?.cached ? " (cached result)" : ""}`, open: j.job_id };
+      }
+      case "failed":
+        return { step: "first", failed: true, label: j.error || "Failed" };
+      default:
+        return { step: "first", label: j.status };
+    }
+  }
+
+  function renderOverlay() {
+    if (!tracked.length) return;
+    const states = tracked.map(procState);
+    const finished = states.filter((st) => st.step === "done" || st.failed).length;
+    $("procTitle").textContent = finished === tracked.length
+      ? `Finished ${tracked.length} consult${tracked.length > 1 ? "s" : ""}`
+      : `Processing ${tracked.length - finished} of ${tracked.length} consult${tracked.length > 1 ? "s" : ""}`;
+    $("procShow").textContent = finished === tracked.length ? "Show processing results" : `Show processing (${tracked.length - finished} running)`;
+    $("procNote").textContent = api.kind === "mock"
+      ? "Mock data: this run is simulated in the browser."
+      : clinician ? "You can close this window. Consults keep processing." : "Live: every stage runs on the ATOM. You can hide this window; jobs keep running.";
+    if (!overlayOpen) return;
+    $("procList").innerHTML = tracked.map((entry, i) => {
+      const st = states[i];
+      const PROC_STEPS = clinician ? PROC_STEPS_PLAIN : PROC_STEPS_TECH;
+      const idx = PROC_STEPS.findIndex(([k]) => k === st.step);
+      const steps = PROC_STEPS.map(([k, label], n) =>
+        `<span class="proc-step ${n < idx || st.step === "done" ? "complete" : n === idx && !st.failed ? "active" : ""}">${label}</span>`).join("");
+      const elapsedS = entry.startedAt ? (Date.now() - entry.startedAt) / 1000 : 0;
+      const elapsed = st.step === "done" || st.failed ? "" : entry.startedAt ? fmtSecs(elapsedS) : "";
+      const determinate = st.pct != null;
+      return `<li class="proc-item${st.failed ? " failed" : ""}">
+        <div class="proc-top"><span class="proc-name">${esc(jobs.find((x) => x.job_id === entry.jobId)?.filename || entry.filename)}</span><span class="proc-elapsed">${elapsed}</span></div>
+        <div class="proc-steps">${steps}</div>
+        <div class="proc-bar${determinate || st.failed ? "" : " indeterminate"}"><div class="proc-fill" style="width:${st.failed ? 100 : determinate ? st.pct : 35}%"></div></div>
+        <div class="proc-label">${st.failed ? `<span class="err">${esc(st.label)}</span>` : esc(st.label)}</div>
+        ${st.line ? `<div class="proc-line">${esc(st.line)}</div>` : ""}
+        ${st.open ? `<button class="btn secondary proc-open" data-open="${esc(st.open)}">Open result</button>` : ""}
+      </li>`;
+    }).join("");
+    // When everything has finished, show the result for a moment, then open the first finished job.
+    if (finished === tracked.length && !closeTimer) {
+      closeTimer = setTimeout(() => {
+        const first = states.find((st) => st.open);
+        if (overlayOpen && first) {
+          selectedId = first.open;
+          showDetail(true);
+          detailKey = "";
+          hideOverlay();
+          renderJobs();
+          renderDetail();
+        }
+      }, 2500);
+    }
+    if (finished < tracked.length) { clearTimeout(closeTimer); closeTimer = null; }
+  }
 
   // ---------- job list ----------
   function renderJobs() {
@@ -121,20 +319,22 @@
           }).join("")
         : `<span class="pending-diar">${j.status === "queued" ? "waiting for diarization…" : j.status === "diarizing" ? "finding speaker turns…" : ""}</span>`;
       const flags = j.result ? j.result.flags.filter(isAlert).length : 0;
-      const label = j.status === "transcribing" ? `transcribing ${done}/${j.turns.length}` : j.status;
+      const label = clinician
+        ? (j.approved ? "Approved" : PLAIN_STATUS[j.status] || j.status)
+        : j.status === "transcribing" ? `transcribing ${done}/${j.turns.length}` : j.status;
       return `<li class="job${j.job_id === selectedId ? " selected" : ""}" data-id="${esc(j.job_id)}">
         <div class="job-top">
           <span class="job-name">${esc(j.filename)}</span>
           <span class="status ${esc(j.status)}">${esc(label)}</span>
         </div>
         <div class="job-meta">
-          <span>${esc(j.job_id)}</span>
+          <span class="tech">${esc(j.job_id)}</span>
           ${j.audio_s ? `<span>${fmtTime(j.audio_s)} audio</span>` : ""}
-          ${j.result ? `<span>${fmtSecs(j.result.timings.total_s)} total</span>` : ""}
-          ${flags ? `<span class="job-flag">⚑ ${flags} FLAG${flags > 1 ? "S" : ""}</span>` : ""}
+          ${j.result ? `<span class="tech">${fmtSecs(j.result.timings.total_s)} total</span>` : ""}
+          ${flags ? `<span class="job-flag">⚑ ${flags} ${clinician ? "to review" : `FLAG${flags > 1 ? "S" : ""}`}</span>` : ""}
           ${j.approved ? `<span style="color:var(--accent)">✓ approved</span>` : ""}
         </div>
-        <div class="chips">${chips}</div>
+        <div class="chips tech">${chips}</div>
       </li>`;
     }).join("");
     // Mark turns as seen after one paint so the glow shows once.
@@ -148,28 +348,45 @@
     const li = e.target.closest(".job");
     if (!li) return;
     selectedId = li.dataset.id;
+    showDetail(true);
     detailKey = "";
     renderJobs();
     renderDetail();
   });
 
   // ---------- metrics ----------
+  // Every number here comes from the API: server timestamps, the first layer's audio length and the
+  // agent's own timings (agent_s, completion tokens from vLLM's usage field). Cached fallback results
+  // are left out, since they were not produced by this run.
+  function busySeconds(intervals) {
+    // Wall time while at least one job was in flight, so idle gaps between uploads don't count.
+    const sorted = intervals.filter(([a, b]) => b > a).sort((x, y) => x[0] - y[0]);
+    let total = 0, curA = null, curB = null;
+    for (const [a, b] of sorted) {
+      if (curB == null || a > curB) { if (curB != null) total += curB - curA; curA = a; curB = b; }
+      else curB = Math.max(curB, b);
+    }
+    return curB == null ? 0 : total + (curB - curA);
+  }
+
   function renderMetrics() {
     const done = jobs.filter((j) => j.status === "done" && j.result);
-    const audio = done.reduce((a, j) => a + (j.result.timings.audio_s || 0), 0);
-    const start = Math.min(...jobs.map((j) => j.created_at));
-    const running = jobs.some((j) => j.status !== "done" && j.status !== "failed");
-    const end = running ? Date.now() / 1000 : Math.max(...jobs.map((j) => j.finished_at || j.created_at));
-    const wall = jobs.length ? Math.max(0, end - start) : 0;
-    const tokens = done.reduce((a, j) => a + (j.result.timings.llm_tokens || 0), 0);
-    const agentS = done.reduce((a, j) => a + (j.result.timings.agent_s || 0), 0);
+    const measured = done.filter((j) => !j.result.cached);
+    const audio = measured.reduce((a, j) => a + (j.result.timings.audio_s || 0), 0);
+    const nowS = Date.now() / 1000;
+    const wall = busySeconds(jobs
+      .filter((j) => !(j.result && j.result.cached) && j.status !== "failed")
+      .map((j) => [j.created_at, j.finished_at || nowS]));
+    const doneWall = busySeconds(measured.map((j) => [j.created_at, j.finished_at]));
+    const tokens = measured.reduce((a, j) => a + (j.result.timings.llm_tokens || 0), 0);
+    const agentS = measured.reduce((a, j) => a + (j.result.timings.agent_s || 0), 0);
 
     $("mAudio").textContent = (audio / 60).toFixed(1);
     $("mWall").textContent = fmtSecs(wall);
-    // Seconds of processing per minute of audio, plus the real-time factor underneath.
-    const perMin = audio && wall ? (60 * wall) / audio : null;
+    // Seconds of processing per minute of audio (finished jobs only), plus the real-time factor underneath.
+    const perMin = audio && doneWall ? (60 * doneWall) / audio : null;
     $("mRtf").textContent = perMin == null ? "–" : perMin < 10 ? `${perMin.toFixed(1)} s` : `${Math.round(perMin)} s`;
-    $("mRtfX").textContent = perMin == null ? "" : `${(audio / wall).toFixed(0)}× faster than real time`;
+    $("mRtfX").textContent = perMin == null ? "" : `${(audio / doneWall).toFixed(0)}× faster than real time`;
     $("mTps").textContent = tokens && agentS ? Math.round(tokens / agentS).toString() : "–";
     $("mJobs").textContent = `${done.length} / ${jobs.length}`;
   }
@@ -183,10 +400,12 @@
       const idx = i + 1;
       const cls = idx < cur || j.status === "done" ? "complete" : idx === cur ? "active" : "";
       let label = STAGE_LABEL[s];
+      if (s === "diarizing" && t && t.diarization_s == null && t.asr_s != null) return null;
+      if (s === "transcribing" && t && t.diarization_s == null && t.asr_s != null) label = "Diarization + ASR";
       if (s === "transcribing" && j.turns.length) label += ` ${j.turns.filter((x) => x.done).length}/${j.turns.length}`;
       if (secs[s] != null) label += ` · ${secs[s].toFixed(1)} s`;
       return `<span class="stage ${cls}">${esc(label)}</span>`;
-    }).join('<span class="stage-arrow">→</span>') + (j.status === "failed" ? `<span class="status failed">failed: ${esc(j.error)}</span>` : "");
+    }).filter(Boolean).join('<span class="stage-arrow">→</span>') + (j.status === "failed" ? `<span class="status failed">failed: ${esc(j.error)}</span>` : "");
   }
 
   function renderTranscript(j) {
@@ -199,17 +418,19 @@
   }
 
   const FLAG_LABEL = { critical: "CRITICAL", warning: "FLAG", info: "NOTE" };
+  const flagLabel = (sev) => (clinician && sev === "warning" ? "REVIEW" : FLAG_LABEL[sev] || "FLAG");
   function renderChecks(r) {
-    $("dBanner").innerHTML = r.flags.filter(isAlert)
-      .map((f) => `<span class="pill ${esc(f.severity)}"><b>⚑ ${FLAG_LABEL[f.severity] || "FLAG"}</b>${esc(f.issue)}</span>`).join("");
-    const flags = r.flags.map((f) => `<div class="flag-card ${esc(f.severity)}${f.verified ? "" : " unverified"}">
-        <span class="verify">${f.verified ? esc(f.source || "verified") : "dropped by verifier"}</span>
-        <span class="flag-label">${FLAG_LABEL[f.severity] || "FLAG"}</span><span class="issue">${esc(f.issue)}</span>
+    $("dBanner").innerHTML = (r.cached ? '<span class="cached-pill">Cached result from an earlier run: Lightning was unavailable</span>' : "") + r.flags.filter(isAlert)
+      .map((f) => `<span class="pill ${esc(f.severity)}"><b>⚑ ${flagLabel(f.severity)}</b>${esc(f.issue)}</span>`).join("");
+    // Flags the verifier dropped are pipeline detail, so the clinician view leaves them out.
+    const flags = r.flags.filter((f) => !clinician || f.verified).map((f) => `<div class="flag-card ${esc(f.severity)}${f.verified ? "" : " unverified"}">
+        <span class="verify tech">${f.verified ? esc(f.source || "verified") : "dropped by verifier"}</span>
+        <span class="flag-label">${flagLabel(f.severity)}</span><span class="issue">${esc(f.issue)}</span>
         ${f.fix ? `<div class="fix">Fix: ${esc(f.fix)}</div>` : ""}
       </div>`).join("");
     const v = r.verification;
     const verifier = v
-      ? `<div class="kv"><div class="k">Verifier</div><div class="v">${v.passed ? '<span class="ok-text">✓ passed, every claim found in the transcript</span>' : `<span class="bad-text">✗ ${(v.unsupported || []).length} unsupported, ${(v.missing || []).length} missing</span>`}</div></div>`
+      ? `<div class="kv tech"><div class="k">Verifier</div><div class="v">${v.passed ? '<span class="ok-text">✓ passed, every claim found in the transcript</span>' : `<span class="bad-text">✗ ${(v.unsupported || []).length} unsupported, ${(v.missing || []).length} missing</span>`}</div></div>`
       : "";
     $("dFlags").innerHTML = (flags || `<div class="ok-card">✓ No panel or rule issues found</div>`) + verifier;
 
@@ -287,6 +508,15 @@
     const j = jobs.find((x) => x.job_id === selectedId);
     $("emptyState").classList.toggle("hidden", !!j);
     $("detailBody").classList.toggle("hidden", !j);
+    const audio = $("originalAudio");
+    const source = j ? originalAudioUrls.get(j.job_id) : null;
+    $("originalAudioPanel").classList.toggle("hidden", !source);
+    if ((audio.getAttribute("src") || null) !== (source || null)) {
+      audio.pause();
+      if (source) audio.src = source;
+      else audio.removeAttribute("src");
+      audio.load();
+    }
     if (!j) return;
 
     const key = `${j.job_id}|${j.status}|${j.turns.filter((t) => t.done).length}|${j.approved}|${!!j.result}`;
@@ -297,6 +527,8 @@
     $("dTitle").textContent = j.filename;
     if (jobChanged || j.status !== "done") $("dBanner").innerHTML = "";
     $("dStages").innerHTML = renderStages(j);
+    $("dPlain").textContent = j.status === "failed" ? `Couldn't process this file: ${j.error || "unknown error"}`
+      : j.approved ? "Approved" : j.status === "done" ? "Ready for your review" : `${PLAIN_STATUS[j.status] || j.status}…`;
     const tr = $("dTranscript");
     const atBottom = tr.scrollHeight - tr.scrollTop - tr.clientHeight < 40;
     tr.innerHTML = renderTranscript(j);
@@ -308,7 +540,7 @@
     btn.classList.toggle("approved", !!j.approved);
 
     if (j.status === "done" && j.result) {
-      if (!animated.has(j.job_id)) {
+      if (!animated.has(j.job_id) && !clinician) {
         animated.add(j.job_id);
         $("dTools").innerHTML = "";
         $("dFlags").innerHTML = $("dMc").innerHTML = $("dDrugs").innerHTML = $("dTimings").innerHTML = "";
@@ -322,7 +554,7 @@
       }
     } else {
       clearInterval(typing); typing = null;
-      const waiting = j.status === "summarising" ? "Lightning is writing the note…" : j.status === "failed" ? "Job failed." : "Waiting for the transcript…";
+      const waiting = j.status === "summarising" ? (clinician ? "Writing the note…" : "Lightning is writing the note…") : j.status === "failed" ? "Job failed." : "Waiting for the transcript…";
       $("soapState").textContent = j.status === "summarising" ? "thinking…" : "";
       $("dSoap").innerHTML = `<p class="muted${j.status === "summarising" ? " cursor" : ""}">${waiting}</p>`;
       $("dTools").innerHTML = `<li class="muted">No tool calls yet.</li>`;
@@ -348,6 +580,7 @@
       renderJobs();
       renderMetrics();
       renderDetail();
+      renderOverlay();
     } catch (e) {
       console.error("refresh failed", e);
     } finally {

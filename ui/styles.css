@@ -45,6 +45,18 @@ body {
   border: 1px solid var(--border); background: var(--surface);
 }
 .badge.local { color: var(--accent); border-color: #3c5a10; }
+.badge.toggle { cursor: pointer; text-decoration: none; color: var(--muted); font: inherit; font-size: 0.85rem; font-weight: 600; }
+.badge.dash { color: var(--doctor); border-color: var(--doctor); font-size: 0.8rem; margin-left: 6px; }
+
+/* Clinician view: hide the pipeline and model detail, keep what a doctor acts on. */
+.clinician .tech { display: none !important; }
+.clinician .grid { grid-template-areas: "transcript soap" "review review"; }
+.clinician .transcript-panel { grid-area: transcript; }
+.clinician .review-panel { grid-area: review; }
+.clinician .grid > .panel:nth-child(2) { grid-area: soap; }
+.plain-status { color: var(--muted); font-size: 1rem; }
+.plain-status:empty { display: none; }
+body:not(.clinician) .plain-status { display: none; }
 .badge.mode.live { color: var(--patient); border-color: #1e6b4a; }
 .badge.mode.mock { color: var(--amber); border-color: #6b4e10; }
 
@@ -201,14 +213,87 @@ body {
 .timing .t { font-weight: 800; font-variant-numeric: tabular-nums; }
 .timing .l { color: var(--muted); font-size: 0.7rem; text-transform: uppercase; }
 
+/* Processing window */
+.overlay {
+  position: fixed; inset: 0; background: rgba(5, 8, 12, 0.72); display: flex;
+  align-items: center; justify-content: center; padding: 24px; z-index: 10;
+}
+.proc-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+  width: min(880px, 100%); max-height: 85vh; overflow: auto; padding: 22px 26px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+.proc-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+.proc-head h2 { margin: 0; font-size: 1.5rem; }
+.proc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.proc-item { background: var(--surface-2); border-radius: 12px; padding: 14px 16px; }
+.proc-top { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.proc-name { font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proc-elapsed { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.proc-steps { display: flex; gap: 6px; margin: 10px 0 8px; flex-wrap: wrap; }
+.proc-step { font-size: 0.78rem; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+.proc-step.active { border-color: var(--doctor); color: var(--doctor); }
+.proc-step.complete { border-color: #3c5a10; color: var(--accent); }
+.proc-bar { height: 10px; background: #0e141b; border-radius: 999px; overflow: hidden; position: relative; }
+.proc-fill { height: 100%; background: var(--accent); border-radius: 999px; transition: width .4s ease; }
+.proc-bar.indeterminate .proc-fill { width: 35% !important; position: absolute; animation: slide 1.4s ease-in-out infinite; }
+@keyframes slide { from { left: -35%; } to { left: 100%; } }
+.proc-item.failed .proc-fill { background: var(--red); }
+.proc-label { margin-top: 8px; font-size: 0.95rem; }
+.proc-label .err { color: var(--red); }
+.proc-line { margin-top: 4px; color: var(--muted); font-size: 0.85rem; font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proc-open { margin-top: 10px; padding: 8px 14px; font-size: 0.9rem; }
+.cached-pill { background: var(--surface-2); border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 6px 12px; font-weight: 700; }
+
 @media (max-width: 1200px) {
   :root { font-size: 16px; }
   .layout { grid-template-columns: 340px 1fr; }
   .metrics { grid-template-columns: repeat(3, 1fr); }
 }
+.btn.back { display: none; }
+
+/* Phones and narrow tablets: one column, normal page scrolling, and the consult list and the open
+   consult take turns on screen (app.js showDetail toggles body.show-detail). */
 @media (max-width: 860px) {
-  .layout { grid-template-columns: 1fr; }
-  .sidebar { border-right: 0; border-bottom: 1px solid var(--border); max-height: 50vh; }
-  .grid { grid-template-columns: 1fr; }
+  html, body { height: auto; }
+  body { min-height: 100%; }
+  .topbar { padding: 10px 16px; gap: 8px; }
+  .logo, .name { font-size: 1.3rem; }
+  .tag { display: none; }
+  .badges { flex-wrap: wrap; gap: 6px; }
+  .badge { font-size: 0.75rem; padding: 4px 10px; }
   .metrics { grid-template-columns: repeat(2, 1fr); }
+  .metric { padding: 10px 14px; }
+  .metric .value { font-size: 1.4rem; }
+  .metric .label, .metric .sub { font-size: 0.7rem; }
+  .layout { display: block; }
+  .sidebar { border-right: 0; padding: 14px 16px; overflow: visible; }
+  .detail { padding: 14px 16px; overflow: visible; }
+  body.show-detail .sidebar { display: none; }
+  body:not(.show-detail) .detail { display: none; }
+  .btn.back { display: inline-block; margin-bottom: 12px; padding: 8px 14px; }
+  .detail-head { flex-direction: column; align-items: stretch; gap: 10px; }
+  .detail-head h2 { font-size: 1.2rem; }
+  .btn.approve { width: 100%; }
+  .grid, .clinician .grid { grid-template-columns: 1fr; grid-template-areas: none; }
+  body.clinician .grid > .panel:nth-child(n) { grid-area: auto; }
+  .transcript, .soap { max-height: none; }
+  .turn { grid-template-columns: 64px 1fr; gap: 8px; }
+  .soap-row { grid-template-columns: 26px 1fr; }
+  .timings { grid-template-columns: repeat(2, 1fr); }
+  .tool { overflow-wrap: anywhere; }
+  .flag-card { overflow-wrap: anywhere; }
+  .overlay { padding: 10px; align-items: flex-end; }
+  .proc-card { max-height: 92vh; padding: 16px; border-radius: 14px; }
+  .proc-head h2 { font-size: 1.2rem; }
 }
+
+/* Sample library and original recordings */
+.sample-library { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin: 12px 0; }
+.sample-library summary { cursor: pointer; font-weight: 600; }
+.sample-library a { color: var(--doctor); }
+.sample-file { padding: 14px 0; border-bottom: 1px solid var(--border); }
+.sample-file audio, #originalAudio { display: block; width: 100%; margin: 12px 0; }
+.sample-file > div { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.sample-library h4 { margin: 18px 0 8px; }
+#originalAudioPanel { margin-bottom: 18px; }

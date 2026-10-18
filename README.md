@@ -41,7 +41,7 @@ numbers): [ventustan.com/clinicscribe](https://ventustan.com/clinicscribe/).
 
 | Path | What |
 |---|---|
-| `server/`, `scripts/start_demo.sh` | FastAPI backend: `/jobs` API, async queues, serves the UI on :8080 |
+| `server/`, `clinicscribe`, `scripts/start_demo.sh` | FastAPI backend: `/jobs` API, async queues, serves the UI on :8080 |
 | `stt_gateway/`, `scripts/start_stt_gateway.sh` | Front door to the team's `async_stt` diarization + ASR pipeline |
 | `agent/` | Lightning agent, tools, verifier (stdlib Python) |
 | `ui/` | Single-page UI, no build step, no CDN |
@@ -54,11 +54,28 @@ numbers): [ventustan.com/clinicscribe](https://ventustan.com/clinicscribe/).
 On the ATOM, with Lightning already up (`demo kit-up`):
 
 ```bash
-pip install fastapi uvicorn      # once, while online
-./scripts/start_demo.sh          # http://localhost:8080
+./clinicscribe                   # first run makes .venv and installs; then http://localhost:8080
 ```
 
-`start_demo.sh` checks Lightning on `127.0.0.1:9000`, then serves the `/jobs` API and the UI from
+No Docker and no system-wide pip installs: `./clinicscribe` keeps its two packages (FastAPI,
+Uvicorn) in a Python venv inside the repo. Other commands:
+
+| Command | What it does |
+|---|---|
+| `./clinicscribe install` | Create `.venv` and install `requirements.txt`. Uses `vendor/wheels` with no network when present. |
+| `./clinicscribe vendor` | While online, save the wheels (and pip) to `vendor/wheels` so installs work with Wi-Fi off. |
+| `./clinicscribe bundle` | Vendor, then pack the repo and wheels into `dist/clinicscribe-offline.tar.gz`. |
+| `./clinicscribe check` | Check Lightning answers and tool calling works. |
+| `./clinicscribe agent FILE` | Run the agent on one transcript (`python -m agent`). |
+| `./clinicscribe test` | Run the unit tests. |
+
+**Fully offline install.** Run `./clinicscribe vendor` on the ATOM while it is online (or on a Mac
+with `VENDOR_PLATFORM=manylinux_2_17_aarch64 VENDOR_PYTHON=3.12 ./clinicscribe vendor` to fetch the
+ARM64 wheels), or copy the bundle over and `tar xzf clinicscribe-offline.tar.gz && cd clinicscribe &&
+./clinicscribe`. If the OS Python has no `python3-venv`, the installer bootstraps pip from the
+vendored pip wheel instead.
+
+`./clinicscribe` runs `scripts/start_demo.sh` with the venv's Python. `start_demo.sh` checks Lightning on `127.0.0.1:9000`, then serves the `/jobs` API and the UI from
 one process (`python3 -m server`). The badge in the top right turns **LIVE**. Open the page in the
 ATOM's own browser, or from a laptop on the same network at `http://<atom-ip>:8080`. Nothing in the
 page or the backend touches the internet, so Wi-Fi can be off.
@@ -80,7 +97,7 @@ transcribes that turn.
 ```bash
 ./scripts/start_stt_gateway.sh   # copies the gateway into async_stt, starts it in env_edwin on 127.0.0.1:8100
 ./scripts/test_stt_gateway.sh    # POSTs a wav (first 60 s of a sample), polls GET until the transcript is back
-./scripts/start_demo.sh          # finds the gateway on :8100 and uses it for audio uploads
+./clinicscribe                   # finds the gateway on :8100 and uses it for audio uploads
 ```
 
 Gateway routes: `POST /jobs` (multipart `file`), `GET /jobs/{id}` (status, per-turn progress, transcript),
@@ -104,7 +121,7 @@ during the demo, a job whose file was run before serves that saved result instea
 **Demo steps (Wi-Fi off)**
 
 1. Before: `demo kit-up`, wait until `curl -s 127.0.0.1:9000/v1/models` lists `lightning`.
-2. `./scripts/start_demo.sh`, open `http://localhost:8080`, check the badge says LIVE.
+2. `./clinicscribe`, open `http://localhost:8080`, check the badge says LIVE.
 3. Drop the hero consult; walk through transcript, tool calls, the MC flag, Approve.
 4. Drop the batch of short files at once to show the queue and the metrics bar.
 
@@ -266,8 +283,9 @@ split into workers; they are not replacement modules for the ClinicScribe agent.
 
 The host setup uses `~/Documents/async_stt` and the `env_edwin` container. The
 gateway startup script expects that project's files at `/workspace` inside the
-container; ClinicScribe runs separately at `/workspace/clinicscribe` in the
-reported deployment. `host/async_stt/` is the repository's source snapshot folder,
+container; ClinicScribe ran separately at `/workspace/clinicscribe` in the
+reported deployment. It no longer needs a container: `./clinicscribe` runs it on the
+ATOM host from its own venv. `host/async_stt/` is the repository's source snapshot folder,
 not a required installation path or a verified copy of every host subdirectory.
 
 The original worker deployment also needs `common/job_store.py`, shared job/audio
