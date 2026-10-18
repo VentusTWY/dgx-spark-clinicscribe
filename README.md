@@ -80,7 +80,9 @@ vendored pip wheel instead.
 
 `./clinicscribe` runs `scripts/start_demo.sh` with the venv's Python. `start_demo.sh` checks Lightning on `127.0.0.1:9000`, then serves the `/jobs` API and the UI from
 one process (`python3 -m server`). The badge in the top right turns **LIVE**. Open the page in the
-ATOM's own browser, or from a laptop on the same network at `http://<atom-ip>:8080`. Nothing in the
+ATOM's own browser. It listens on 127.0.0.1 only by default; to open it from a laptop or phone on the
+same network, start it with `HOST=0.0.0.0 ./clinicscribe` and browse to `http://<atom-ip>:8080`. There is
+no login, so only do that on a network you trust and stop it afterwards. Nothing in the
 page or the backend touches the internet, so Wi-Fi can be off.
 
 **What you can upload**
@@ -181,7 +183,7 @@ cd dgx-spark-clinicscribe
 ./scripts/run_agent.sh samples/diarized_hero_aia.json # 4. demo case: 3-day MC on AIA (limit 2) gets flagged
 ```
 
-Measured on our ATOM (EMARQUE-DGX-H): the 100 s sample consult takes about 64 s through the agent
+Measured on our ATOM: the 100 s sample consult takes about 64 s through the agent
 with Lightning thinking on (6.3k completion tokens). `LLM_THINKING=0` turns reasoning off for the
 whole run, which is faster; compare the note quality before using it for the demo. The verifier and
 speaker labelling always run with thinking off, because they only need a short JSON answer.
@@ -227,7 +229,7 @@ export LLM_MAX_TOKENS=8192                     # optional: raise if replies come
 127.0.0.1, so forward it over SSH (same login NVIDIA Sync uses), then run the agent on your laptop:
 
 ```bash
-ssh -N -L 9000:127.0.0.1:9000 admin@<your-atom-hostname-or-ip>
+ssh -N -L 9000:127.0.0.1:9000 <user>@<your-atom-hostname-or-ip>
 # in another terminal on the laptop:
 ./scripts/run_agent.sh samples/transcript_urti.json
 ```
