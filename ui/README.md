@@ -76,9 +76,40 @@ The UI polls `GET /jobs` once a second. A `Job` looks like:
 - Optional: `timings.llm_tokens` (completion tokens) powers the "Lightning tokens/s" metric.
 - `created_at` / `finished_at` (epoch seconds) drive the wall-time and real-time-factor metrics.
 
+## Clinician view and /dashboard
+
+`/` is the clinician view: consult list, transcript, SOAP note, the items to review
+(flags, MC, prescriptions, panel rules) and Approve. Model names, pipeline stages, tool calls,
+timings and the metrics bar are left out.
+
+`/dashboard/` is the same app with all of that shown: turn chips, pipeline stages and timings,
+the agent's tool calls, flags the verifier dropped, and the metrics bar. Use it for demos and
+debugging. Each page links to the other from the header. With the real backend both pages show
+the same jobs; in mock mode each page runs its own simulation.
+
+On phones (860 px wide or less) both pages switch to one column. The consult list and the
+open consult take turns on screen, with an "All consults" button to go back.
+
+## What the metrics bar measures
+
+In LIVE mode every number comes from the backend; nothing is estimated in the browser.
+
+| Metric | Source |
+|---|---|
+| Audio minutes processed | `result.timings.audio_s` (audio length from the first layer) of finished jobs |
+| Wall time | Server `created_at` → `finished_at`, counting only time when at least one job was in flight |
+| To process 1 min of audio | Busy wall time of finished jobs × 60 ÷ their audio seconds (and the real-time factor under it) |
+| Lightning tokens/s per consult | Completion tokens reported by vLLM's `usage` field ÷ `agent_s`, averaged over finished jobs. `agent_s` includes prompt processing, tool execution and the verifier pass, so this is lower than raw decode speed |
+| API cost | RM0: nothing leaves the ATOM |
+
+Results served from `out/<stem>.result.json` because Lightning failed (`meta.cached`) are marked in the
+detail view and left out of the metrics. The SOAP note "typing" is a replay of the finished note, not
+token streaming.
+
 ## Files
 
-- `index.html` – layout
+- `index.html` – layout (clinician view)
+- `dashboard/index.html` – technical dashboard: same markup with `data-view="tech"` and `<base href="../">`
 - `styles.css` – dark projector theme
 - `app.js` – polling, rendering, SOAP typewriter, metrics
 - `api.js` – `HttpApi` and `MockApi` (simulated queues: 2 diarization, 6 ASR, 6 agent slots)
