@@ -23,7 +23,8 @@ Upload ─▶ Diarize ─▶ ASR ─▶ Agent ─▶ Review
 queued → diarizing → transcribing (k/n turns) → summarising → done
 ```
 
-1. **Hear.** NVIDIA Sortformer works out who is speaking and when; Nemotron 3.5 ASR Streaming 0.6B
+1. **Hear.** [NVIDIA Nemotron 3 Diarization](https://huggingface.co/nvidia/Nemotron-3-Diarization) (a ~100M
+   Sortformer-style model, up to 8 speakers) works out who is speaking and when; Nemotron 3.5 ASR Streaming 0.6B
    transcribes each turn with timestamps (the team's `async_stt` pipeline on Ray Serve + Celery).
 2. **Draft.** Nemotron 3.5 Lightning (30B MoE, 3B active), served locally by vLLM, labels Doctor and
    Patient and calls five tools: `get_panel_rules`, `check_drug`, `draft_mc`, `flag`, `write_soap_note`.
