@@ -68,7 +68,24 @@
             <div class="plain-status" id="dPlain"></div>
             <div class="banner" id="dBanner"></div>
           </div>
-          <button class="btn approve" id="approveBtn" disabled>Approve</button>
+          <div class="decide">
+            <button class="btn approve" id="approveBtn" disabled>Approve</button>
+            <button class="btn reject" id="rejectBtn" disabled>Don't approve</button>
+          </div>
+        </div>
+
+        <form class="reject-form hidden" id="rejectForm">
+          <label for="rejectReason">What needs changing? <span class="muted">(optional)</span></label>
+          <textarea id="rejectReason" rows="2" maxlength="500" placeholder="e.g. MC should be 2 days"></textarea>
+          <div class="form-actions">
+            <button type="submit" class="btn reject">Mark as needs changes</button>
+            <button type="button" class="btn secondary" id="rejectCancel">Cancel</button>
+          </div>
+        </form>
+        <div class="review-note hidden" id="dReview"></div>
+        <div class="stale-note hidden" id="staleNote">
+          <span>You corrected the transcript. The note below was written from the old one.</span>
+          <button class="btn" id="rerunBtn">Rewrite note</button>
         </div>
 
         <div id="originalAudioPanel" class="panel hidden">
@@ -79,8 +96,13 @@
 
         <div class="grid">
           <div class="panel transcript-panel">
-            <h3>Transcript</h3>
+            <h3 class="panel-head">Transcript <button class="btn secondary edit-btn hidden" id="editBtn">✎ Edit</button></h3>
             <div class="transcript" id="dTranscript"></div>
+            <div class="edit-bar hidden" id="editBar">
+              <button class="btn" id="saveEdit">Save corrections</button>
+              <button class="btn secondary" id="cancelEdit">Cancel</button>
+              <span class="err small" id="editMsg"></span>
+            </div>
           </div>
 
           <div class="panel">

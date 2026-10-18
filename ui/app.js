@@ -51,6 +51,7 @@
       timings,
       // Served from out/<stem>.result.json because Lightning failed: not a measurement of this run.
       cached: !!r.meta?.cached,
+      rerun: !!r.meta?.rerun,  // rewritten from a transcript the doctor corrected
     };
   }
   const isAlert = (f) => f.verified && f.severity !== "info";
@@ -185,7 +186,73 @@
 
   $("approveBtn").addEventListener("click", async () => {
     if (!selectedId) return;
+    $("rejectForm").classList.add("hidden");
     await api.approve(selectedId);
+    refresh();
+  });
+
+  // ---------- review: don't approve, correct the transcript, rewrite the note ----------
+  const selectedJob = () => jobs.find((x) => x.job_id === selectedId);
+  $("rejectBtn").addEventListener("click", () => {
+    const form = $("rejectForm");
+    form.classList.toggle("hidden");
+    if (!form.classList.contains("hidden")) {
+      const j = selectedJob();
+      $("rejectReason").value = j?.review?.status === "changes_requested" ? j.review.reason || "" : "";
+      $("rejectReason").focus();
+    }
+  });
+  $("rejectCancel").addEventListener("click", () => $("rejectForm").classList.add("hidden"));
+  $("rejectForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!selectedId) return;
+    await api.reject(selectedId, $("rejectReason").value.trim());
+    $("rejectForm").classList.add("hidden");
+    refresh();
+  });
+
+  let editingId = null;  // job whose transcript is open for correction; polling leaves it alone
+  function stopEditing() {
+    editingId = null;
+    $("editBar").classList.add("hidden");
+    $("editMsg").textContent = "";
+    detailKey = "";
+  }
+  $("editBtn").addEventListener("click", () => {
+    const j = selectedJob();
+    if (!j?.result) return;
+    editingId = j.job_id;
+    $("editBtn").classList.add("hidden");
+    $("editBar").classList.remove("hidden");
+    const tr = $("dTranscript");
+    tr.innerHTML = j.result.transcript.map((t, idx) => `<div class="turn ${esc(t.speaker)}">
+      <div class="who">${esc(t.speaker)}<span class="ts">${fmtTime(t.start)}</span></div>
+      <textarea class="turn-edit" data-idx="${idx}" rows="2" aria-label="${esc(t.speaker)} at ${fmtTime(t.start)}">${esc(t.text)}</textarea>
+    </div>`).join("");
+    tr.querySelectorAll("textarea").forEach(fitHeight);
+  });
+  const fitHeight = (ta) => { ta.style.height = "auto"; ta.style.height = `${ta.scrollHeight + 2}px`; };
+  $("dTranscript").addEventListener("input", (e) => e.target.matches("textarea") && fitHeight(e.target));
+  $("cancelEdit").addEventListener("click", () => { stopEditing(); renderDetail(); });
+  $("saveEdit").addEventListener("click", async () => {
+    const j = jobs.find((x) => x.job_id === editingId);
+    if (!j) return stopEditing();
+    const turns = [...$("dTranscript").querySelectorAll("textarea")]
+      .map((ta) => ({ idx: +ta.dataset.idx, text: ta.value.trim() }))
+      .filter((t) => t.text !== j.result.transcript[t.idx].text);
+    if (turns.some((t) => !t.text)) { $("editMsg").textContent = "A turn can't be left empty."; return; }
+    try {
+      if (turns.length) await api.saveTranscript(editingId, turns);
+      stopEditing();
+      await refresh();
+    } catch (err) {
+      $("editMsg").textContent = `Couldn't save: ${err.message}`;
+    }
+  });
+  $("rerunBtn").addEventListener("click", async () => {
+    if (!selectedId) return;
+    $("rerunBtn").disabled = true;
+    try { await api.rerun(selectedId); } finally { $("rerunBtn").disabled = false; }
     refresh();
   });
 
@@ -225,6 +292,7 @@
     if (e.target.id === "procOverlay") return hideOverlay();
     const btn = e.target.closest("[data-open]");
     if (!btn) return;
+    if (btn.dataset.open !== selectedId) { stopEditing(); $("rejectForm").classList.add("hidden"); }
     selectedId = btn.dataset.open;
     showDetail(true);
     detailKey = "";
@@ -348,13 +416,14 @@
           }).join("")
         : `<span class="pending-diar">${j.status === "queued" ? "waiting for diarization…" : j.status === "diarizing" ? "finding speaker turns…" : ""}</span>`;
       const flags = j.result ? j.result.flags.filter(isAlert).length : 0;
-      const label = clinician
-        ? (j.approved ? "Approved" : PLAIN_STATUS[j.status] || j.status)
+      const changes = j.review?.status === "changes_requested";
+      const label = changes && j.status === "done" ? "Needs changes"
+        : clinician ? (j.approved ? "Approved" : j.note_stale ? "Transcript corrected" : j.reruns && j.status === "summarising" ? "Rewriting note" : PLAIN_STATUS[j.status] || j.status)
         : j.status === "transcribing" ? `transcribing ${done}/${j.turns.length}` : j.status;
       return `<li class="job${j.job_id === selectedId ? " selected" : ""}" data-id="${esc(j.job_id)}">
         <div class="job-top">
           <span class="job-name">${esc(j.filename)}</span>
-          <span class="status ${esc(j.status)}">${esc(label)}</span>
+          <span class="status ${changes && j.status === "done" ? "changes" : esc(j.status)}">${esc(label)}</span>
         </div>
         <div class="job-meta">
           <span class="tech">${esc(j.job_id)}</span>
@@ -362,7 +431,9 @@
           ${j.result ? `<span class="tech">${fmtSecs(j.result.timings.total_s)} total</span>` : ""}
           ${flags ? `<span class="job-flag">⚑ ${flags} ${clinician ? "to review" : `FLAG${flags > 1 ? "S" : ""}`}</span>` : ""}
           ${j.approved ? `<span style="color:var(--accent)">✓ approved</span>` : ""}
+          ${j.result?.transcript.some((t) => t.edited) ? `<span>✎ corrected</span>` : ""}
         </div>
+        ${changes && j.review.reason ? `<div class="job-reason">${esc(j.review.reason)}</div>` : ""}
         <div class="chips tech">${chips}</div>
       </li>`;
     }).join("");
@@ -376,6 +447,7 @@
   $("jobList").addEventListener("click", (e) => {
     const li = e.target.closest(".job");
     if (!li) return;
+    if (li.dataset.id !== selectedId) { stopEditing(); $("rejectForm").classList.add("hidden"); }
     selectedId = li.dataset.id;
     showDetail(true);
     detailKey = "";
@@ -442,7 +514,7 @@
     if (!rows.length) return `<p class="muted">${j.status === "failed" ? "No transcript." : "Waiting for speaker turns…"}</p>`;
     return rows.map((t) => `<div class="turn ${esc(t.speaker)}">
       <div class="who">${esc(t.speaker)}<span class="ts">${fmtTime(t.start)}</span></div>
-      <div class="text${t.done ? "" : " pending"}">${t.done ? esc(t.text) : "…"}</div>
+      <div class="text${t.done ? "" : " pending"}">${t.done ? esc(t.text) : "…"}${t.edited ? '<span class="edited-tag">edited</span>' : ""}</div>
     </div>`).join("");
   }
 
@@ -548,7 +620,8 @@
     }
     if (!j) return;
 
-    const key = `${j.job_id}|${j.status}|${j.turns.filter((t) => t.done).length}|${j.approved}|${!!j.result}`;
+    const key = [j.job_id, j.status, j.turns.filter((t) => t.done).length, j.approved, !!j.result, j.review?.status,
+      j.review?.reason, j.note_stale, j.reruns, j.error, j.result?.transcript.filter((t) => t.edited).length, editingId].join("|");
     if (key === detailKey) return;
     const jobChanged = !detailKey.startsWith(j.job_id + "|");
     detailKey = key;
@@ -556,17 +629,34 @@
     $("dTitle").textContent = j.filename;
     if (jobChanged || j.status !== "done") $("dBanner").innerHTML = "";
     $("dStages").innerHTML = renderStages(j);
+    const changes = j.review?.status === "changes_requested";
     $("dPlain").textContent = j.status === "failed" ? `Couldn't process this file: ${j.error || "unknown error"}`
-      : j.approved ? "Approved" : j.status === "done" ? "Ready for your review" : `${PLAIN_STATUS[j.status] || j.status}…`;
-    const tr = $("dTranscript");
-    const atBottom = tr.scrollHeight - tr.scrollTop - tr.clientHeight < 40;
-    tr.innerHTML = renderTranscript(j);
-    if (atBottom || jobChanged) tr.scrollTop = j.status === "done" && jobChanged ? 0 : tr.scrollHeight;
+      : j.approved ? "Approved" : changes ? "" : j.status === "done" ? "Ready for your review"
+      : j.reruns && j.status === "summarising" ? "Rewriting the note from your corrected transcript…" : `${PLAIN_STATUS[j.status] || j.status}…`;
+    // The decision and anything that blocks it, shown in both views.
+    const review = $("dReview");
+    review.className = `review-note${changes ? " changes" : j.status === "done" && j.error ? " warn" : " hidden"}`;
+    review.innerHTML = changes
+      ? `<b>Not approved: needs changes</b>${j.review.reason ? `<div>${esc(j.review.reason)}</div>` : ""}`
+      : j.status === "done" && j.error ? esc(`${j.error}. The note below is the earlier one.`) : "";
+    $("staleNote").classList.toggle("hidden", !(j.status === "done" && j.note_stale));
+    const editing = editingId === j.job_id;
+    $("editBtn").classList.toggle("hidden", editing || j.status !== "done" || !j.result);
+    if (!editing) {
+      const tr = $("dTranscript");
+      const atBottom = tr.scrollHeight - tr.scrollTop - tr.clientHeight < 40;
+      tr.innerHTML = renderTranscript(j);
+      if (atBottom || jobChanged) tr.scrollTop = j.status === "done" && jobChanged ? 0 : tr.scrollHeight;
+    }
 
     const btn = $("approveBtn");
     btn.disabled = j.status !== "done" || j.approved;
     btn.textContent = j.approved ? "Approved ✓" : "Approve";
     btn.classList.toggle("approved", !!j.approved);
+    const rej = $("rejectBtn");
+    rej.disabled = j.status !== "done";
+    rej.textContent = changes ? "Needs changes ✎" : "Don't approve";
+    rej.classList.toggle("active", changes);
 
     if (j.status === "done" && j.result) {
       if (!animated.has(j.job_id) && !clinician) {

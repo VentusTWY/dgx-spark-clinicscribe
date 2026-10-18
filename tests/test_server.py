@@ -101,6 +101,41 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(self.call(f"/jobs/{job['job_id']}/approve", b""), {"ok": True})
         self.assertTrue(self.call(f"/jobs/{job['job_id']}")["approved"])
 
+    def test_doctor_corrects_transcript_rewrites_note_and_can_send_back(self):
+        job_id = self.upload("review.json", (ROOT / "samples" / "diarized_urti.json").read_bytes())
+        first = self.wait_done(job_id)
+        self.check_result(first)
+        reject = lambda body: self.call(f"/jobs/{job_id}/reject", body, "application/json")
+        self.assertEqual(reject(json.dumps({"reason": "MC days wrong"}).encode()), {"ok": True})
+        job = self.call(f"/jobs/{job_id}")
+        self.assertEqual(job["review"]["status"], "changes_requested")
+        self.assertEqual(job["review"]["reason"], "MC days wrong")
+        self.assertFalse(job["approved"])
+        reject(b"")  # the reason is optional
+        self.assertEqual(self.call(f"/jobs/{job_id}")["review"]["reason"], "")
+
+        edit = json.dumps({"turns": [{"idx": 1, "text": "Corrected by the doctor."}]}).encode()
+        self.assertTrue(self.call(f"/jobs/{job_id}/transcript", edit, "application/json", "PUT")["changed"])
+        job = self.call(f"/jobs/{job_id}")
+        self.assertTrue(job["note_stale"])
+        self.assertIsNone(job["review"])
+        self.assertEqual(job["result"]["transcript"][1]["text"], "Corrected by the doctor.")
+        self.assertTrue(job["result"]["transcript"][1]["edited"])
+        with self.assertRaises(urllib.error.HTTPError) as err:
+            self.call(f"/jobs/{job_id}/transcript", json.dumps({"turns": [{"idx": 1, "text": " "}]}).encode(), "application/json", "PUT")
+        self.assertEqual(err.exception.code, 400)
+
+        FakeVLLM.step = 0
+        self.assertEqual(self.call(f"/jobs/{job_id}/rerun", b""), {"ok": True})
+        job = self.wait_done(job_id)
+        self.check_result(job)
+        self.assertFalse(job["note_stale"])
+        self.assertEqual(job["reruns"], 1)
+        self.assertTrue(job["result"]["meta"]["rerun"])
+        self.assertEqual(job["result"]["transcript"][1]["text"], "Corrected by the doctor.")
+        self.assertTrue(job["result"]["transcript"][1]["edited"])
+        self.assertLess(job["result"]["timings"]["total_s"], first["result"]["timings"]["total_s"] + 5)
+
     def test_audio_upload_uses_cached_first_layer(self):
         job = self.wait_done(self.upload("urti.wav", b"RIFF fake audio"))
         self.check_result(job)

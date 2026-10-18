@@ -6,6 +6,9 @@
 //   GET  /jobs                                               -> [Job]
 //   GET  /jobs/{job_id}                                      -> Job
 //   POST /jobs/{job_id}/approve                              -> {ok: true}
+//   POST /jobs/{job_id}/reject     JSON {reason?}            -> {ok: true}   "Don't approve": needs changes
+//   PUT  /jobs/{job_id}/transcript JSON {turns: [{idx, text}]} -> {ok, changed}  doctor's corrections
+//   POST /jobs/{job_id}/rerun                                -> {ok: true}   rewrite the note from the transcript
 //
 // Job = {
 //   job_id, filename, status,          // queued|diarizing|transcribing|summarising|done|failed
@@ -15,6 +18,9 @@
 //   finished_at,                       // epoch seconds or null
 //   error,                             // string or null
 //   approved,                          // bool
+//   review,                            // null or {status: "approved"|"changes_requested", reason, at}
+//   note_stale,                        // true after a transcript correction until the note is rewritten
+//   reruns,                            // how many times the note was rewritten from a corrected transcript
 //   result                             // once status == done, else null: the agent output
 //                                      // (docs/agent_contract.md) plus transcript and timings.
 //                                      // The CLAUDE.md contract shape is accepted too.
@@ -49,9 +55,17 @@
         xhr.send(fd);
       });
     }
-    async approve(id) {
-      return this._json(await fetch(`${this.base}/jobs/${encodeURIComponent(id)}/approve`, { method: "POST" }));
+    async _send(id, path, method, body) {
+      const res = await fetch(`${this.base}/jobs/${encodeURIComponent(id)}/${path}`, {
+        method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined,
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail || `${res.status} ${res.statusText}`);
+      return res.json();
     }
+    approve(id) { return this._send(id, "approve", "POST"); }
+    reject(id, reason) { return this._send(id, "reject", "POST", { reason }); }
+    saveTranscript(id, turns) { return this._send(id, "transcript", "PUT", { turns }); }
+    rerun(id) { return this._send(id, "rerun", "POST"); }
   }
 
   // In-browser simulation of the async pipeline: diar_queue -> asr_queue -> agent_queue,
@@ -84,7 +98,35 @@
     }
     async approve(id) {
       const j = this.jobs.get(id);
-      if (j) j.approved = true;
+      if (j) { j.approved = true; j.review = { status: "approved", reason: "", at: now() }; }
+      return { ok: true };
+    }
+    async reject(id, reason = "") {
+      const j = this.jobs.get(id);
+      if (j) { j.approved = false; j.review = { status: "changes_requested", reason, at: now() }; }
+      return { ok: true };
+    }
+    async saveTranscript(id, turns) {
+      const j = this.jobs.get(id);
+      let changed = false;
+      for (const { idx, text } of turns) {
+        const t = j?.result?.transcript[idx];
+        if (t && t.text !== text) { j.result.transcript[idx] = { ...t, text, edited: true }; changed = true; }
+      }
+      if (changed) {
+        j.edits = j.result.transcript.map((t) => (t.edited ? t.text : null));
+        j.turns.forEach((t) => { if (j.edits[t.idx] != null) { t.text = j.edits[t.idx]; t.edited = true; } });
+        Object.assign(j, { note_stale: true, approved: false, review: null });
+      }
+      return { ok: true, changed };
+    }
+    // The mock note is canned, so a rewrite only replays the agent stage; the corrections stay in the transcript.
+    async rerun(id) {
+      const j = this.jobs.get(id);
+      if (!j || j.status !== "done") throw new Error("the note is not ready yet");
+      Object.assign(j, { status: "summarising", result: null, approved: false, review: null, reruns: j.reruns + 1 });
+      j.agentQueued = now();
+      this.queues.agent.push({ job: j, stage: "agent", left: rand(2.5, 4.5) });
       return { ok: true };
     }
 
@@ -105,6 +147,7 @@
       const job = {
         job_id, filename, status: "queued", audio_s: consult.audio_s,
         turns: [], created_at: now(), finished_at: null, error: null, approved: false,
+        review: null, note_stale: false, reruns: 0, edits: null,
         result: null, consult, t: { diar: 0, asr: 0, agent: 0 }, asrStart: null,
       };
       this.jobs.set(job_id, job);
@@ -155,11 +198,16 @@
       } else if (task.stage === "agent") {
         job.t.agent = now() - job.agentQueued;
         job.status = "done";
-        job.finished_at = now();
+        job.note_stale = false;
+        const rerun = job.reruns > 0;
+        if (!rerun) job.finished_at = now();
         const { name, audio_s, llm_tokens, ...contract } = job.consult;
+        const transcript = contract.transcript.map((t, i) => (job.edits?.[i] != null ? { ...t, text: job.edits[i], edited: true } : t));
         job.result = {
           job_id: job.job_id,
           ...contract,
+          transcript,
+          meta: rerun ? { rerun: true } : undefined,
           timings: {
             diarization_s: +job.t.diar.toFixed(2),
             asr_s: +job.t.asr.toFixed(2),
@@ -173,7 +221,7 @@
     }
 
     _public(j) {
-      const { consult, t, asrStart, agentQueued, ...rest } = j;
+      const { consult, t, asrStart, agentQueued, edits, ...rest } = j;
       return JSON.parse(JSON.stringify(rest));
     }
   }
