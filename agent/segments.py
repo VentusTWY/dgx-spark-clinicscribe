@@ -18,6 +18,7 @@ import time
 
 from .agent import run_agent
 from .llm import LLMClient, LLMError
+from .terms import correct_segments, load_terms
 
 SEGMENT_LIST_KEYS = ("segments", "breakdown", "turns", "utterances", "results")
 ROLES = ("Doctor", "Patient", "Nurse", "Caregiver", "Other")
@@ -192,17 +193,19 @@ def render_transcript(segments, roles):
 
 # --- entry point ------------------------------------------------------------
 
-def run_agent_on_segments(data, patient=None, visit_date=None, client=None, verify=True):
+def run_agent_on_segments(data, patient=None, visit_date=None, client=None, verify=True, terms=None):
     """Run the agent on first-layer output. Returns the agent contract plus
-    transcript, speakers, audio and timings (see docs/agent_contract.md)."""
+    transcript, speakers, audio, timings and term_corrections (see docs/agent_contract.md)."""
     client = client or LLMClient()
     started = time.time()
+    terms = load_terms() if terms is None else terms
     segments, audio = load_segments(data)
     if not segments:
         raise ValueError("No segments with text found in the input")
+    corrections = correct_segments(segments, terms)
     roles, method = label_speakers(client, segments)
 
-    result = run_agent(render_transcript(segments, roles), patient, visit_date, client=client, verify=verify)
+    result = run_agent(render_transcript(segments, roles), patient, visit_date, client=client, verify=verify, terms=terms)
 
     agent_s = round(time.time() - started, 2)
     upstream = data.get("timings", {}) if isinstance(data, dict) else {}
@@ -212,6 +215,7 @@ def run_agent_on_segments(data, patient=None, visit_date=None, client=None, veri
         for s in segments
     ]
     result["speakers"] = {"roles": roles, "method": method}
+    result["term_corrections"] = corrections
     result["audio"] = audio
     result["timings"] = {
         **upstream,

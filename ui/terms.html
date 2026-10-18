@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Clinic terms · ClinicScribe</title>
+  <link rel="icon" type="image/svg+xml" sizes="any" href="favicon.svg">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body { display: block; }
+    a.badge { color: var(--text); text-decoration: none; }
+    .terms-page { max-width: 1200px; margin: 0 auto; padding: 24px; }
+    .terms-page h1 { margin: 0 0 6px; font-size: 1.6rem; }
+    .terms-page p { margin: 0 0 18px; }
+    .terms-table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    .terms-table th { text-align: left; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding: 10px 8px; border-bottom: 1px solid var(--border); }
+    .terms-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .terms-table input, .terms-table select { width: 100%; font: inherit; font-size: 0.9rem; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; }
+    .terms-table input:focus, .terms-table select:focus { outline: none; border-color: var(--accent); }
+    .terms-table .del { background: none; border: none; color: var(--muted); font-size: 1.2rem; cursor: pointer; }
+    .terms-table .del:hover { color: var(--red); }
+    .terms-actions { display: flex; gap: 12px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+    #termsMsg.ok { color: var(--accent); }
+    #termsMsg.err { color: var(--red); }
+    @media (max-width: 760px) { .terms-table th:nth-child(3), .terms-table td:nth-child(3) { display: none; } }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">✚</span>
+      <span class="name">ClinicScribe</span>
+      <span class="tag">clinic terms</span>
+    </div>
+    <div class="badges"><a class="badge" href="./">← Back to consults</a></div>
+  </header>
+
+  <main class="terms-page">
+    <h1>Clinic terms</h1>
+    <p class="muted">Your clinic's brand names, shorthand and panel names, and how the transcription tends to mishear them.
+      Mishearings are corrected in the transcript, Lightning reads the list before writing the note, and a drug that
+      matches neither the formulary nor this list is flagged for review rather than guessed. Changes apply to the next consult.</p>
+
+    <table class="terms-table">
+      <thead><tr><th style="width:18%">Term</th><th style="width:12%">Kind</th><th>Meaning</th><th style="width:16%">Maps to</th><th style="width:24%">Common mishearings (comma-separated)</th><th style="width:3%"></th></tr></thead>
+      <tbody id="termsBody"></tbody>
+    </table>
+
+    <div class="terms-actions">
+      <button class="btn secondary" id="addTerm">+ Add term</button>
+      <button class="btn approve" id="saveTerms">Save</button>
+      <span id="termsMsg" class="muted"></span>
+    </div>
+  </main>
+
+  <script src="terms.js"></script>
+</body>
+</html>

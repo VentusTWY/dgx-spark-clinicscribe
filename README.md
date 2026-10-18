@@ -118,7 +118,7 @@ The UI on its own (mock data, no backend) still runs with `python serve_ui.py`; 
 
 ```
 transcript + patient ─▶ Lightning (vLLM, tool calling) ─┬─ get_panel_rules ─▶ data/panels.json
-                                                        ├─ check_drug ──────▶ data/formulary.json + allergies
+                                                        ├─ check_drug ──────▶ data/formulary.json + clinic terms + allergies
                                                         ├─ draft_mc ────────▶ dates, panel MC limit
                                                         ├─ flag
                                                         └─ write_soap_note
@@ -134,7 +134,14 @@ transcript + patient ─▶ Lightning (vLLM, tool calling) ─┬─ get_panel_r
    and panel MC limits are all computed deterministically and turned into flags.
 3. **Verifier**. A second, separate Lightning call compares the draft with the transcript and
    lists anything unsupported (hallucinated) or missing. Those become flags too.
-4. **Fallback**. If the server was started without tool calling, the agent asks for the SOAP
+4. **Clinic terms** (`agent/terms.py`, `data/clinic_terms.json`). Each clinic keeps a small list of
+   its own brand names, shorthand and panel names, with what they mean and how the ASR tends to
+   mishear them. Known mishearings are corrected in the transcript ("by solvent" → Bisolvon), the
+   list goes into Lightning's prompt, and `check_drug` resolves a clinic term to its formulary drug.
+   A drug name that matches neither the formulary nor the list is flagged for the doctor instead of
+   guessed. Edit it at `/terms.html` (the "Clinic terms" button in the UI); changes apply to the next
+   consult. The ASR model takes no vocabulary hints, so the correction runs right after ASR.
+5. **Fallback**. If the server was started without tool calling, the agent asks for the SOAP
    note as plain JSON instead and flags that the checks were skipped.
 
 The client (`agent/llm.py`) speaks the OpenAI-compatible API that vLLM exposes and uses only
@@ -235,7 +242,9 @@ calls Lightning would make.
 | `agent/tools.py` | Tool schemas and implementations |
 | `agent/agent.py` | Agent loop, verifier, output assembly |
 | `agent/segments.py` | Diarized input: loader, Doctor/Patient role mapping, timings |
+| `agent/terms.py` | Clinic terms: mishearing correction, glossary for the prompt, drug-name lookup |
 | `data/formulary.json`, `data/panels.json` | Synthetic demo formulary and panel rules |
+| `data/clinic_terms.json` | The clinic's own terms (synthetic demo list; edited at `/terms.html`) |
 | `samples/` | Sample transcript, visit input and output |
 | `scripts/check_server.sh`, `scripts/run_agent.sh` | One-command server check and run |
 

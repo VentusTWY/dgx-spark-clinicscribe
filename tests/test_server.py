@@ -5,11 +5,13 @@ Run: python3 -m unittest discover tests   (needs fastapi + uvicorn)
 
 import json
 import os
+import shutil
 import socket
 import tempfile
 import threading
 import time
 import unittest
+import urllib.error
 import urllib.request
 import uuid
 from http.server import HTTPServer
@@ -45,6 +47,9 @@ class ServerTest(unittest.TestCase):
         cls.llm = HTTPServer(("127.0.0.1", 0), FakeVLLM)
         threading.Thread(target=cls.llm.serve_forever, daemon=True).start()
         cls.tmp = tempfile.mkdtemp()
+        cls.terms_file = Path(cls.tmp) / "clinic_terms.json"
+        shutil.copy(ROOT / "data" / "clinic_terms.json", cls.terms_file)
+        os.environ["CLINIC_TERMS_FILE"] = str(cls.terms_file)
         os.environ.update(LLM_BASE_URL=f"http://127.0.0.1:{cls.llm.server_port}/v1", OUT_DIR=cls.tmp,
                           AGENT_WORKERS="1", SAMPLES_DIR=str(ROOT / "samples"))
         from server.app import app
@@ -60,9 +65,10 @@ class ServerTest(unittest.TestCase):
         cls.srv.should_exit = True
         cls.llm.shutdown()
 
-    def call(self, path, body=None, ctype=None):
+    def call(self, path, body=None, ctype=None, method=None):
         req = urllib.request.Request(f"http://127.0.0.1:{self.port}{path}", data=body,
-                                     headers={"Content-Type": ctype} if ctype else {}, method="POST" if body is not None else "GET")
+                                     headers={"Content-Type": ctype} if ctype else {},
+                                     method=method or ("POST" if body is not None else "GET"))
         with self.opener.open(req, timeout=10) as r:
             return json.loads(r.read())
 
@@ -103,6 +109,18 @@ class ServerTest(unittest.TestCase):
         job = self.wait_done(self.upload("unknown.wav", b"RIFF"))
         self.assertEqual(job["status"], "failed")
         self.assertIn("STT_URL", job["error"])
+
+    def test_terms_can_be_read_and_edited(self):
+        terms = self.call("/terms")["terms"]
+        self.assertTrue(any(t["term"] == "Bisolvon" for t in terms))
+        new = terms + [{"term": "Difflam", "kind": "drug", "meaning": "Benzydamine spray", "mishearings": "diff lamb"}]
+        saved = self.call("/terms", json.dumps({"terms": new}).encode(), "application/json", "PUT")["terms"]
+        self.assertEqual(saved[-1]["mishearings"], ["diff lamb"])
+        self.assertEqual(json.loads(self.terms_file.read_text())["terms"], saved)
+        dup = json.dumps({"terms": [{"term": "MC"}, {"term": "MC"}]}).encode()
+        with self.assertRaises(urllib.error.HTTPError) as err:
+            self.call("/terms", dup, "application/json", "PUT")
+        self.assertEqual(err.exception.code, 400)
 
     def test_ui_is_served(self):
         with self.opener.open(f"http://127.0.0.1:{self.port}/", timeout=5) as r:
