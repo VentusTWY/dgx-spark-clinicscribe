@@ -12,6 +12,7 @@ import json
 import time
 
 from .llm import LLMClient, LLMError
+from .terms import glossary, load_terms
 from .tools import TOOL_SCHEMAS, Workspace
 
 MAX_STEPS = 12
@@ -25,6 +26,7 @@ Use the tools to build the visit record. Work in this order:
 4. Call flag for anything the doctor must review: allergy conflicts, missing vitals, red flags, unclear doses.
 5. Call write_soap_note last.
 Rules: only use facts stated in the transcript. Never invent vitals, doses or diagnoses.
+If a drug name sounds garbled, pass it to check_drug exactly as heard; never guess which drug was meant.
 When you have called write_soap_note, reply with the single word DONE."""
 
 VERIFIER_PROMPT = """You are a strict clinical documentation verifier.
@@ -37,18 +39,20 @@ Respond with JSON only, exactly this shape:
 passed is false if anything is unsupported or a safety-relevant fact is missing."""
 
 
-def _user_message(transcript, patient, visit_date):
+def _user_message(transcript, patient, visit_date, terms=None):
+    gloss = glossary(terms or [])
     return (
         f"Visit date: {visit_date}\n"
         f"Patient: {json.dumps(patient, ensure_ascii=False)}\n\n"
-        f"TRANSCRIPT:\n{transcript}"
+        + (f"{gloss}\n\n" if gloss else "")
+        + f"TRANSCRIPT:\n{transcript}"
     )
 
 
 def _run_tool_loop(client, ws, transcript):
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": _user_message(transcript, ws.patient, ws.visit_date)},
+        {"role": "user", "content": _user_message(transcript, ws.patient, ws.visit_date, ws.terms)},
     ]
     for _ in range(MAX_STEPS):
         msg = client.chat(messages, tools=TOOL_SCHEMAS)
@@ -82,7 +86,7 @@ def _fallback_soap(client, ws, transcript):
     prompt = (
         "Write a SOAP note for this consultation. Only use facts from the transcript. "
         'Respond with JSON only: {"subjective":"","objective":"","assessment":"","plan":"","diagnoses":[]}\n\n'
-        + _user_message(transcript, ws.patient, ws.visit_date)
+        + _user_message(transcript, ws.patient, ws.visit_date, ws.terms)
     )
     data = client.chat_json([{"role": "user", "content": prompt}])
     ws.write_soap_note(**{k: data.get(k, "") for k in ("subjective", "objective", "assessment", "plan")}, diagnoses=data.get("diagnoses", []))
@@ -110,10 +114,11 @@ def _verify(client, ws, transcript):
     return result
 
 
-def run_agent(transcript, patient=None, visit_date=None, client=None, verify=True):
-    """Run the full pipeline and return the output contract as a dict."""
+def run_agent(transcript, patient=None, visit_date=None, client=None, verify=True, terms=None):
+    """Run the full pipeline and return the output contract as a dict.
+    terms: the clinic terms list (agent/terms.py); None loads data/clinic_terms.json, [] turns it off."""
     client = client or LLMClient()
-    ws = Workspace(patient=patient, visit_date=visit_date)
+    ws = Workspace(patient=patient, visit_date=visit_date, terms=load_terms() if terms is None else terms)
     started = time.time()
 
     try:
@@ -144,5 +149,6 @@ def run_agent(transcript, patient=None, visit_date=None, client=None, verify=Tru
             "visit_date": ws.visit_date,
             "latency_ms": int((time.time() - started) * 1000),
             "tool_calls": ws.tool_log,
+            "clinic_terms": len(ws.terms),
         },
     }

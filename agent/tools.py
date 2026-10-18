@@ -8,6 +8,8 @@ import datetime as dt
 import json
 from pathlib import Path
 
+from .terms import find_term
+
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 
@@ -37,7 +39,7 @@ TOOL_SCHEMAS = [
         "check_drug",
         "Check ONE drug the doctor prescribed against the clinic formulary, the patient's allergies and the panel. Call once per prescribed drug. The result is recorded as a prescription line.",
         {
-            "drug": {"type": "string", "description": "Drug name as said, generic or brand"},
+            "drug": {"type": "string", "description": "Drug name exactly as said, generic, brand or clinic term. Do not guess a name from a garbled word."},
             "dose": {"type": "string", "description": "Dose per administration, e.g. '1 g' or '10 mg'"},
             "frequency": {"type": "string", "description": "e.g. 'QID PRN', 'TDS', 'ON'"},
             "duration": {"type": "string", "description": "e.g. '5 days'; empty if not stated"},
@@ -83,8 +85,9 @@ TOOL_SCHEMAS = [
 class Workspace:
     """Holds the visit context and everything the tools produce."""
 
-    def __init__(self, patient=None, visit_date=None):
+    def __init__(self, patient=None, visit_date=None, terms=None):
         self.patient = patient or {}
+        self.terms = terms or []
         self.visit_date = visit_date or dt.date.today().isoformat()
         self.formulary = _load("formulary.json")["drugs"]
         self.panels = {p["id"]: p for p in _load("panels.json")["panels"]}
@@ -132,6 +135,10 @@ class Workspace:
 
     def check_drug(self, drug, dose="", frequency="", duration="", dose_mg=None, times_per_day=None):
         entry = self._find_drug(drug)
+        term = None if entry else find_term(drug, [t for t in self.terms if t["kind"] == "drug"])
+        if term:
+            # A clinic term ("Panadol Actifast", or a known mishearing of it) resolves via maps_to.
+            entry = self._find_drug(term["maps_to"]) if term.get("maps_to") else None
         # A repeat check of the same drug replaces the earlier line.
         label = (entry["name"] if entry else drug).lower()
         self.prescriptions = [p for p in self.prescriptions if p["drug"].lower() != label]
@@ -145,13 +152,19 @@ class Workspace:
             "status": "ok",
             "notes": [],
         }
+        if term:
+            line["clinic_term"] = term["term"]
+            line["notes"].append(f"Clinic term: {term['term']}" + (f" ({term['meaning']})" if term.get("meaning") else ""))
         if not entry:
             line["status"] = "warning"
             line["notes"].append("Not in clinic formulary")
             panel = self._panel_rules()
             if panel and panel["formulary_only"]:
                 line["notes"].append(f"{panel['name']} only covers formulary drugs")
-            self._add_flag("warning", f"{drug} is not in the clinic formulary.", "check_drug")
+            if term:
+                self._add_flag("info", f"{term['term']} is a clinic term but not in the formulary, so no dose or allergy check was run.", "check_drug")
+            else:
+                self._add_flag("warning", f"'{drug}' matches no formulary drug or clinic term. Check the name before signing.", "check_drug")
         else:
             group = entry.get("allergy_group")
             if group and any(group in a or entry["name"].lower() in a for a in allergies):

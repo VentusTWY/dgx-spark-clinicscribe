@@ -56,12 +56,12 @@ transcript as `[00:01-00:04] Doctor: ...` lines.
 | Key | Type | Meaning |
 |---|---|---|
 | `soap` | object | `subjective`, `objective`, `assessment`, `plan` (strings), `diagnoses` (string[]) |
-| `prescriptions` | array | One line per drug: `drug`, `dose`, `frequency`, `duration`, `in_formulary` (bool), `status` (`ok` / `warning` / `danger`), `notes` (string[]) |
+| `prescriptions` | array | One line per drug: `drug`, `dose`, `frequency`, `duration`, `in_formulary` (bool), `status` (`ok` / `warning` / `danger`), `notes` (string[]), and `clinic_term` when the name was resolved through the clinic terms list |
 | `mc` | object or null | `days`, `start_date`, `end_date` (YYYY-MM-DD, inclusive), `reason`, `text`. Null if no MC was given |
 | `panel` | object or null | `id`, `name`, `max_mc_days` (int or null), `formulary_only`, `notes` (string[]). Null for no panel |
 | `flags` | array | `severity` (`critical` / `warning` / `info`), `message`, `source` (`check_drug`, `draft_mc`, `get_panel_rules`, `model`, `verifier`, `agent`). Sorted most severe first |
 | `verification` | object or null | `passed` (bool), `unsupported` (string[]), `missing` (string[]); may also carry `error` and `raw` if the verifier output could not be parsed. Null when run with `--no-verify` |
-| `meta` | object | `model`, `base_url`, `visit_date`, `latency_ms`, `tool_calls` (array of `{name, arguments, ok}`, in call order) |
+| `meta` | object | `model`, `base_url`, `visit_date`, `latency_ms`, `tool_calls` (array of `{name, arguments, ok}`, in call order), `clinic_terms` (how many clinic terms were loaded) |
 
 ### Extra keys for diarized input
 
@@ -71,5 +71,15 @@ transcript as `[00:01-00:04] Doctor: ...` lines.
 |---|---|---|
 | `transcript` | array | `[{speaker, speaker_id, start, end, text}]`, in time order. `speaker` is the role, `speaker_id` the diarization id (string) |
 | `speakers` | object | `roles` (`{"1": "Doctor", "0": "Patient"}`), `method` (`model` or `heuristic`) |
+| `term_corrections` | array | `[{turn, heard, term}]`: known mishearings from the clinic terms list replaced in the transcript before the agent read it |
 | `audio` | object | `file`, `duration_s` |
 | `timings` | object | `agent_s` (role labelling + agent + verifier), `audio_s`, `llm_tokens` (completion tokens), plus any upstream `diarization_s` / `asr_s`; `total_s` is their sum when upstream timings are given |
+
+### Clinic terms
+
+`data/clinic_terms.json` (or `CLINIC_TERMS_FILE`) is the clinic's own list of brand names, shorthand and
+panel names, each with `term`, `kind` (`drug` / `shorthand` / `panel` / `other`), `meaning`, `maps_to`
+(a formulary drug or panel id, optional) and `mishearings`. It is edited at `/terms.html` (`GET`/`PUT /terms`).
+Known mishearings are corrected in the transcript, the list is added to Lightning's prompt, and `check_drug`
+resolves a drug term through `maps_to`. A drug that matches neither the formulary nor the list is flagged
+for the doctor instead of guessed. Pass `terms=[]` to `run_agent` / `run_agent_on_segments` to turn it off.

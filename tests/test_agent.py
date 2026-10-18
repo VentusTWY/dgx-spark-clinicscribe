@@ -12,7 +12,10 @@ from pathlib import Path
 
 from agent import LLMClient, run_agent, run_agent_on_segments
 from agent.__main__ import load_input
+from agent.agent import _user_message
 from agent.segments import heuristic_roles, load_segments
+from agent.terms import clean_terms, correct_text, load_terms
+from agent.tools import Workspace
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -160,11 +163,57 @@ class AgentTest(unittest.TestCase):
         self.assertEqual(out["panel"]["id"], "PANEL-AIA")
         json.dumps(out)
 
+    def test_clinic_terms_correct_the_transcript(self):
+        data = json.loads((ROOT / "samples" / "diarized_urti.json").read_text())
+        data["segments"][0]["text"] += " I'll add by solvent for the cough."
+        out = run_agent_on_segments(data, data["patient"], data["visit_date"], client=LLMClient(base_url=self.client_url), verify=False)
+        self.assertEqual(out["term_corrections"], [{"turn": 0, "heard": "by solvent", "term": "Bisolvon"}])
+        self.assertIn("I'll add Bisolvon for the cough.", out["transcript"][0]["text"])
+        self.assertGreater(out["meta"]["clinic_terms"], 0)
+        out = run_agent_on_segments(data, client=LLMClient(base_url=self.client_url), verify=False, terms=[])
+        self.assertEqual(out["term_corrections"], [])
+
     def test_bad_role_answer_falls_back_to_heuristic(self):
         FakeVLLM.roles_answer = {"0": "Doctor", "1": "Doctor"}
         data = json.loads((ROOT / "samples" / "diarized_urti.json").read_text())
         out = run_agent_on_segments(data, client=LLMClient(base_url=self.client_url), verify=False)
         self.assertEqual(out["speakers"], {"roles": {"1": "Doctor", "0": "Patient"}, "method": "heuristic"})
+
+
+class ClinicTermsTest(unittest.TestCase):
+    TERMS = clean_terms([
+        {"term": "Bisolvon", "kind": "drug", "meaning": "Bromhexine syrup", "maps_to": "Bromhexine", "mishearings": "by solvent, bisolvan"},
+        {"term": "Strepsils", "kind": "drug", "meaning": "Lozenges", "mishearings": []},
+        {"term": "MC", "kind": "shorthand", "meaning": "Medical certificate", "mishearings": ["emcee"]},
+        {"term": "  ", "kind": "drug"},
+    ])
+
+    def test_clean_terms(self):
+        self.assertEqual([t["term"] for t in self.TERMS], ["Bisolvon", "Strepsils", "MC"])
+        self.assertEqual(self.TERMS[0]["mishearings"], ["by solvent", "bisolvan"])
+        with self.assertRaisesRegex(ValueError, "listed twice"):
+            clean_terms([{"term": "MC"}, {"term": "mc"}])
+        self.assertTrue(load_terms())  # the shipped data/clinic_terms.json loads
+
+    def test_correct_text_matches_whole_words_only(self):
+        text, changes = correct_text("Take By  Solvent syrup. Two days emcee. Standby solvents.", self.TERMS)
+        self.assertEqual(text, "Take Bisolvon syrup. Two days MC. Standby solvents.")
+        self.assertEqual([c["term"] for c in changes], ["Bisolvon", "MC"])
+
+    def test_check_drug_resolves_terms_and_flags_unknown_names(self):
+        ws = Workspace(terms=self.TERMS)
+        line = ws.check_drug("bisolvan", "10 ml", "TDS")
+        self.assertEqual((line["drug"], line["in_formulary"], line["clinic_term"]), ("Bromhexine", True, "Bisolvon"))
+        line = ws.check_drug("Strepsils")
+        self.assertFalse(line["in_formulary"])
+        ws.check_drug("zorbitex")
+        self.assertEqual([f["severity"] for f in ws.flags], ["info", "warning"])
+        self.assertIn("matches no formulary drug or clinic term", ws.flags[1]["message"])
+
+    def test_glossary_goes_to_the_model(self):
+        msg = _user_message("Doctor: hi", {}, "2026-10-18", self.TERMS)
+        self.assertIn("- Bisolvon (drug): Bromhexine syrup\n", msg)  # maps_to already in the meaning
+        self.assertNotIn("clinic's own terms", _user_message("Doctor: hi", {}, "2026-10-18", []))
 
 
 class SegmentLoaderTest(unittest.TestCase):

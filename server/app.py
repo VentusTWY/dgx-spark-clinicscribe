@@ -18,6 +18,9 @@ Uploads:
 Patient details (panel, allergies) come from the JSON upload's "patient", an optional "patient" form
 field, or samples/patients.json (filename glob -> patient).
 
+Clinic terms (data/clinic_terms.json, see agent/terms.py) are read at the start of each agent run, so edits
+made at /terms.html (GET/PUT /terms) apply to the next consult without a restart.
+
 If the agent fails and out/<stem>.result.json exists (from a pre-run), that result is served instead
 and marked meta.cached = true, so the demo survives Lightning going down.
 """
@@ -42,6 +45,7 @@ from fastapi.staticfiles import StaticFiles
 
 from agent.llm import LLMClient
 from agent.segments import is_segment_input, load_segments, run_agent_on_segments
+from agent.terms import load_terms, save_terms
 
 ROOT = Path(__file__).resolve().parent.parent
 UI_DIR = ROOT / "ui"
@@ -312,6 +316,21 @@ async def approve_job(job_id: str):
         raise HTTPException(404, "job not found")
     jobs[job_id]["approved"] = True
     return {"ok": True}
+
+
+@app.get("/terms")
+async def get_terms():
+    return {"terms": load_terms()}
+
+
+@app.put("/terms")
+async def put_terms(request: Request):
+    try:
+        body = await request.json()
+        terms = await asyncio.to_thread(save_terms, body.get("terms") if isinstance(body, dict) else body)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"terms": terms}
 
 
 @app.get("/health")
