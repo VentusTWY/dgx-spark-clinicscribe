@@ -30,25 +30,31 @@ MAX_TERMS = 500
 
 def load_terms(path=None):
     try:
-        return json.loads(Path(path or terms_file()).read_text()).get("terms", [])
-    except (OSError, ValueError):
+        raw = json.loads(Path(path or terms_file()).read_text()).get("terms", [])
+        return clean_terms(raw, strict=False)
+    except (OSError, ValueError, AttributeError):
         return []
 
 
-def clean_terms(raw):
-    """Validate an edited list; raises ValueError with a message the UI can show."""
+def clean_terms(raw, strict=True):
+    """Validate an edited list; raises ValueError with a message the UI can show.
+    strict=False (loading a hand-edited file) skips bad rows instead."""
     if not isinstance(raw, list):
         raise ValueError("terms must be a list")
-    if len(raw) > MAX_TERMS:
+    if strict and len(raw) > MAX_TERMS:
         raise ValueError(f"at most {MAX_TERMS} terms")
     out, seen = [], set()
     for i, t in enumerate(raw, 1):
         if not isinstance(t, dict):
+            if not strict:
+                continue
             raise ValueError(f"row {i}: not an object")
         term = str(t.get("term", "")).strip()
         if not term:
             continue  # blank rows from the editor are dropped
         if term.lower() in seen:
+            if not strict:
+                continue
             raise ValueError(f"row {i}: '{term}' is listed twice")
         seen.add(term.lower())
         kind = str(t.get("kind") or "other").strip().lower()
@@ -60,7 +66,7 @@ def clean_terms(raw):
             "kind": kind if kind in KINDS else "other",
             "meaning": str(t.get("meaning", "")).strip(),
             "maps_to": str(t.get("maps_to", "")).strip(),
-            "mishearings": [m.strip() for m in mishearings if str(m).strip() and m.strip().lower() != term.lower()],
+            "mishearings": [m for m in (str(m).strip() for m in mishearings) if m and m.lower() != term.lower()],
         })
     return out
 
