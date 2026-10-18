@@ -75,6 +75,21 @@
   $("modeBadge").classList.add(api.kind === "mock" ? "mock" : "live");
   if (api.kind !== "mock") $("demoBtn").classList.add("hidden");
 
+  // Demo notice: without a backend everything shown is canned, so say so once per browser.
+  // The MOCK DATA badge opens it again.
+  const NOTICE_KEY = "clinicscribe.demoNoticeSeen";
+  const showNotice = (on) => $("demoNotice").classList.toggle("hidden", !on);
+  $("demoOk").addEventListener("click", () => {
+    showNotice(false);
+    try { localStorage.setItem(NOTICE_KEY, "1"); } catch (_) { /* storage blocked */ }
+  });
+  $("modeBadge").addEventListener("click", () => api.kind === "mock" && showNotice(true));
+  if (api.kind === "mock") {
+    let seen = false;
+    try { seen = localStorage.getItem(NOTICE_KEY) === "1"; } catch (_) { /* storage blocked */ }
+    if (!seen) showNotice(true);
+  }
+
   // ---------- view ----------
   // The main page is the clinician view: transcript, SOAP note, items to review, MC and
   // prescriptions, and Approve. /dashboard/ (body data-view="tech") is the same app with the
@@ -164,7 +179,7 @@
     </div>`).join("") + `<h4>Text references</h4>` + textSamples.map((name) => `
     <p><a href="samples/${name}" target="_blank" rel="noopener">${name}</a> · <a href="samples/${name}" download>Download</a></p>`).join("");
   $("sampleNote").textContent = api.kind === "mock"
-    ? "Audio playback is real. Simulate demo uses canned results, not transcription of the recording. Connect the backend for real processing."
+    ? "Audio playback is real. Simulate demo shows a pre-written example consult, not a transcript of the recording. Real transcription needs the ClinicScribe backend on the ATOM."
     : "Process audio sends the recording to the configured backend.";
   $("sampleFiles").addEventListener("click", async (event) => {
     const button = event.target.closest("[data-sample]");
@@ -329,7 +344,7 @@
         return { step: "agent", label: clinician ? "Writing the SOAP note and checking drugs, MC and panel rules" : "Lightning is writing the SOAP note and checking drugs, MC and panel rules", line: j.turns.length ? `${j.turns.length} turns transcribed` : "" };
       case "done": {
         const t = j.result?.timings || {};
-        return { step: "done", pct: 100, label: `Done in ${fmtSecs(t.total_s ?? (j.finished_at - j.created_at))}${j.result?.cached ? " (cached result)" : ""}`, open: j.job_id };
+        return { step: "done", pct: 100, label: `Done in ${fmtSecs(t.total_s ?? (j.finished_at - j.created_at))}${j.result?.cached ? " (cached result)" : ""}${j.example ? " (example data)" : ""}`, open: j.job_id };
       }
       case "failed":
         return { step: "first", failed: true, label: j.error || "Failed" };
@@ -627,6 +642,7 @@
     detailKey = key;
 
     $("dTitle").textContent = j.filename;
+    $("dExample").classList.toggle("hidden", !j.example);
     if (jobChanged || j.status !== "done") $("dBanner").innerHTML = "";
     $("dStages").innerHTML = renderStages(j);
     const changes = j.review?.status === "changes_requested";

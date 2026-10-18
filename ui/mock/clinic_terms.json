@@ -1,0 +1,14 @@
+{
+  "_note": "This clinic's own words: brand names, house shorthand, panel names, and how the ASR tends to mishear them. Edit at /terms.html. Synthetic demo data.",
+  "clinic": "Demo GP clinic",
+  "terms": [
+    {"term": "Panadol Actifast", "kind": "drug", "meaning": "Fast-release paracetamol 500 mg", "maps_to": "Paracetamol", "mishearings": ["panadol active fast", "panadol acti fast"]},
+    {"term": "Bisolvon", "kind": "drug", "meaning": "Bromhexine cough syrup", "maps_to": "Bromhexine", "mishearings": ["bi solvon", "bisolvan", "by solvent"]},
+    {"term": "Augmentin", "kind": "drug", "meaning": "Amoxicillin-clavulanate", "maps_to": "Amoxicillin-clavulanate", "mishearings": ["augment in"]},
+    {"term": "Clarityne", "kind": "drug", "meaning": "Loratadine 10 mg", "maps_to": "Loratadine", "mishearings": ["clarity in", "clarity nay"]},
+    {"term": "Hydrolyte", "kind": "drug", "meaning": "Oral rehydration salts sachet", "maps_to": "Oral rehydration salts", "mishearings": ["hydro light", "hydrolite"]},
+    {"term": "Strepsils", "kind": "drug", "meaning": "Throat lozenges from clinic stock, not in the formulary", "maps_to": "", "mishearings": ["strep sills", "strep cells"]},
+    {"term": "MC", "kind": "shorthand", "meaning": "Medical certificate (sick leave)", "maps_to": "", "mishearings": ["emcee", "em see"]},
+    {"term": "AIA panel", "kind": "panel", "meaning": "AIA Corporate Panel (PANEL-AIA)", "maps_to": "PANEL-AIA", "mishearings": ["aya panel", "a i a panel"]}
+  ]
+}
