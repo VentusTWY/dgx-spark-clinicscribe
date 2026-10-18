@@ -66,6 +66,7 @@ AGENT_WORKERS = int(os.environ.get("AGENT_WORKERS", "4"))
 STT_POLL_S = float(os.environ.get("STT_POLL_S", "1"))
 STT_TIMEOUT = int(os.environ.get("STT_TIMEOUT", "1800"))
 MAX_TRIES = 2
+MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "200"))
 
 jobs = {}  # job_id -> job dict (the UI's Job shape plus private "_" keys)
 first_layer_queue = asyncio.Queue()
@@ -271,7 +272,10 @@ async def create_job(request: Request):
     ctype = request.headers.get("content-type", "")
     if not ctype.startswith("multipart/form-data"):
         raise HTTPException(400, "Send multipart/form-data with a 'file' field")
-    fields = parse_multipart(ctype, await request.body())
+    body = await request.body()
+    if len(body) > MAX_UPLOAD_MB * 1024 * 1024:
+        raise HTTPException(413, f"Upload is over {MAX_UPLOAD_MB} MB (MAX_UPLOAD_MB to change)")
+    fields = parse_multipart(ctype, body)
     if "file" not in fields:
         raise HTTPException(400, "Missing 'file' field")
     filename, content = fields["file"]

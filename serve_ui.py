@@ -23,4 +23,4 @@ app = FastAPI(title="ClinicScribe UI")
 app.mount("/", StaticFiles(directory=UI_DIR, html=True), name="ui")
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))
+    uvicorn.run(app, host=os.environ.get("HOST", "127.0.0.1"), port=int(os.environ.get("PORT", "8080")))
