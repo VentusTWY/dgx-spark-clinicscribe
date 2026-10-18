@@ -117,6 +117,7 @@
   const dz = $("dropzone");
   const input = $("fileInput");
   async function uploadFiles(files) {
+    pruneFinished();
     const entries = files.map((f) => track({ filename: f.name, uploadPct: 0 }));
     openOverlay();
     for (const [i, f] of files.entries()) {
@@ -143,6 +144,7 @@
   dz.addEventListener("drop", (e) => uploadFiles([...e.dataTransfer.files]));
   $("demoBtn").addEventListener("click", async () => {
     const ids = await api.loadDemoBatch(10);
+    pruneFinished();
     if (!selectedId) selectedId = ids[0];
     ids.forEach((id, i) => track({ jobId: id, filename: window.MOCK_CONSULTS[i === 0 ? 0 : 1 + ((i - 1) % (window.MOCK_CONSULTS.length - 1))].name, startedAt: Date.now() }));
     openOverlay();
@@ -195,6 +197,16 @@
   let overlayOpen = false;
   let closeTimer = null;
   const track = (entry) => { tracked.push(entry); return entry; };
+  // A new upload starts a fresh window: consults that already finished leave it (they stay in the
+  // job list), so the new files are not buried under old results.
+  function pruneFinished() {
+    tracked = tracked.filter((entry) => {
+      const st = procState(entry);
+      const keep = !(st.step === "done" || st.failed);
+      if (!keep && entry.el) entry.el.remove();
+      return keep;
+    });
+  }
   function openOverlay() {
     overlayOpen = true;
     clearTimeout(closeTimer);
@@ -270,24 +282,41 @@
       ? "Mock data: this run is simulated in the browser."
       : clinician ? "You can close this window. Consults keep processing." : "Live: every stage runs on the ATOM. You can hide this window; jobs keep running.";
     if (!overlayOpen) return;
-    $("procList").innerHTML = tracked.map((entry, i) => {
+    // Each card is built once and then updated in place. Rebuilding the list on every poll replaced
+    // the progress bar each time, which restarted its animation and width transition.
+    const list = $("procList");
+    const PROC_STEPS = clinician ? PROC_STEPS_PLAIN : PROC_STEPS_TECH;
+    tracked.forEach((entry, i) => {
       const st = states[i];
-      const PROC_STEPS = clinician ? PROC_STEPS_PLAIN : PROC_STEPS_TECH;
+      if (!entry.el) {
+        entry.el = document.createElement("li");
+        entry.el.innerHTML = `<div class="proc-top"><span class="proc-name"></span><span class="proc-elapsed"></span></div>
+          <div class="proc-steps"></div>
+          <div class="proc-bar"><div class="proc-fill"></div></div>
+          <div class="proc-label"></div><div class="proc-line"></div>
+          <button class="btn secondary proc-open hidden">Open result</button>`;
+        list.appendChild(entry.el);
+      }
+      const el = entry.el;
+      const q = (sel) => el.querySelector(sel);
       const idx = PROC_STEPS.findIndex(([k]) => k === st.step);
       const steps = PROC_STEPS.map(([k, label], n) =>
         `<span class="proc-step ${n < idx || st.step === "done" ? "complete" : n === idx && !st.failed ? "active" : ""}">${label}</span>`).join("");
       const elapsedS = entry.startedAt ? (Date.now() - entry.startedAt) / 1000 : 0;
-      const elapsed = st.step === "done" || st.failed ? "" : entry.startedAt ? fmtSecs(elapsedS) : "";
       const determinate = st.pct != null;
-      return `<li class="proc-item${st.failed ? " failed" : ""}">
-        <div class="proc-top"><span class="proc-name">${esc(jobs.find((x) => x.job_id === entry.jobId)?.filename || entry.filename)}</span><span class="proc-elapsed">${elapsed}</span></div>
-        <div class="proc-steps">${steps}</div>
-        <div class="proc-bar${determinate || st.failed ? "" : " indeterminate"}"><div class="proc-fill" style="width:${st.failed ? 100 : determinate ? st.pct : 35}%"></div></div>
-        <div class="proc-label">${st.failed ? `<span class="err">${esc(st.label)}</span>` : esc(st.label)}</div>
-        ${st.line ? `<div class="proc-line">${esc(st.line)}</div>` : ""}
-        ${st.open ? `<button class="btn secondary proc-open" data-open="${esc(st.open)}">Open result</button>` : ""}
-      </li>`;
-    }).join("");
+      el.className = `proc-item${st.failed ? " failed" : ""}`;
+      q(".proc-name").textContent = jobs.find((x) => x.job_id === entry.jobId)?.filename || entry.filename;
+      q(".proc-elapsed").textContent = st.step === "done" || st.failed ? "" : entry.startedAt ? fmtSecs(elapsedS) : "";
+      if (q(".proc-steps").innerHTML !== steps) q(".proc-steps").innerHTML = steps;
+      q(".proc-bar").classList.toggle("indeterminate", !determinate && !st.failed);
+      q(".proc-fill").style.width = `${st.failed ? 100 : determinate ? st.pct : 35}%`;
+      q(".proc-label").innerHTML = st.failed ? `<span class="err">${esc(st.label)}</span>` : esc(st.label);
+      q(".proc-line").textContent = st.line || "";
+      q(".proc-line").classList.toggle("hidden", !st.line);
+      const open = q(".proc-open");
+      open.classList.toggle("hidden", !st.open);
+      if (st.open) open.dataset.open = st.open;
+    });
     // When everything has finished, show the result for a moment, then open the first finished job.
     if (finished === tracked.length && !closeTimer) {
       closeTimer = setTimeout(() => {
