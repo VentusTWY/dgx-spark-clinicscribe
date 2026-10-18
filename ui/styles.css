@@ -96,6 +96,11 @@ body:not(.clinician) .plain-status { display: none; }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn.approve { background: var(--accent); color: #0b0f14; border-color: var(--accent); font-size: 1.1rem; padding: 12px 28px; }
 .btn.approve.approved { background: transparent; color: var(--accent); }
+.btn.reject { color: var(--red); border-color: #6b2323; }
+.btn.reject:hover:not(:disabled) { border-color: var(--red); }
+.btn.reject.active { background: #3a1212; border-color: var(--red); }
+.decide { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.decide .btn { white-space: nowrap; }
 
 .joblist-head {
   display: flex; justify-content: space-between; align-items: center; margin-top: 6px;
@@ -122,7 +127,8 @@ body:not(.clinician) .plain-status { display: none; }
 .status.transcribing { background: #10283f; color: var(--doctor); }
 .status.summarising { background: #2b2a0c; color: #e8e05a; }
 .status.done { background: #1b2d0a; color: var(--accent); }
-.status.failed { background: #3a1212; color: var(--red); }
+.status.failed, .status.changes { background: #3a1212; color: var(--red); }
+.job-reason { color: #f3b0b0; font-size: 0.8rem; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; min-height: 14px; }
 .chip {
@@ -161,6 +167,29 @@ body:not(.clinician) .plain-status { display: none; }
 .turn.Doctor .who { color: var(--doctor); }
 .turn.Patient .who { color: var(--patient); }
 .turn .text.pending { color: var(--muted); font-style: italic; }
+.edited-tag { margin-left: 8px; font-size: 0.68rem; font-weight: 700; color: var(--amber); border: 1px solid #6b4e10; border-radius: 999px; padding: 0 6px; vertical-align: middle; }
+
+/* Review: don't approve, transcript corrections, rewrite the note */
+.panel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.edit-btn { padding: 4px 12px; font-size: 0.8rem; text-transform: none; letter-spacing: 0; }
+.turn-edit {
+  width: 100%; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 8px; resize: vertical; line-height: 1.4;
+}
+.turn-edit:focus { outline: none; border-color: var(--accent); }
+.edit-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.edit-bar .btn { padding: 10px 16px; }
+.err { color: var(--red); }
+.reject-form, .review-note, .stale-note { border-radius: var(--radius); padding: 12px 14px; margin-bottom: 16px; }
+.reject-form { background: var(--surface); border: 1px solid #6b2323; display: flex; flex-direction: column; gap: 8px; }
+.reject-form label { font-weight: 700; }
+.reject-form textarea { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; resize: vertical; }
+.form-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.review-note.changes { background: #3a1212; border: 1px solid var(--red); color: #f3b0b0; }
+.review-note.changes b { color: var(--red); }
+.review-note.warn { background: var(--amber-bg); border: 1px solid var(--amber); color: var(--amber); }
+.stale-note { background: var(--amber-bg); border: 1px solid var(--amber); color: #f1d9a6; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.stale-note .btn { background: var(--amber); color: #0b0f14; border-color: var(--amber); }
 @keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
 .soap { display: flex; flex-direction: column; gap: 10px; max-height: 38vh; overflow: auto; }
@@ -275,6 +304,9 @@ body:not(.clinician) .plain-status { display: none; }
   .detail-head { flex-direction: column; align-items: stretch; gap: 10px; }
   .detail-head h2 { font-size: 1.2rem; }
   .btn.approve { width: 100%; }
+  .decide { flex-direction: column; }
+  .decide .btn { width: 100%; }
+  .form-actions .btn, .edit-bar .btn, .stale-note .btn { flex: 1; }
   .grid, .clinician .grid { grid-template-columns: 1fr; grid-template-areas: none; }
   body.clinician .grid > .panel:nth-child(n) { grid-area: auto; }
   .transcript, .soap { max-height: none; }

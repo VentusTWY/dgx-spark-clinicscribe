@@ -18,6 +18,10 @@ Uploads:
 Patient details (panel, allergies) come from the JSON upload's "patient", an optional "patient" form
 field, or samples/patients.json (filename glob -> patient).
 
+Review: the doctor can correct transcript turns (PUT /jobs/{id}/transcript), have the note rewritten from the
+corrected transcript (POST /jobs/{id}/rerun, first layer not repeated), approve, or send the note back as needing
+changes with an optional reason (POST /jobs/{id}/reject). Editing or rewriting clears an earlier decision.
+
 Clinic terms (data/clinic_terms.json, see agent/terms.py) are read at the start of each agent run, so edits
 made at /terms.html (GET/PUT /terms) apply to the next consult without a restart.
 
@@ -215,6 +219,10 @@ async def agent_worker():
             if job["_agent_tries"] < MAX_TRIES:
                 await agent_queue.put(job["job_id"])
                 continue
+            if job.get("_prev_result"):
+                # A rewrite from a corrected transcript failed: keep the earlier note and say so.
+                job.update(result=job.pop("_prev_result"), status="done", error=f"Couldn't rewrite the note: {e}")
+                continue
             cached = OUT_DIR / f"{job['_stem']}.result.json"
             if not cached.exists():
                 fail(job, f"agent: {e}")
@@ -223,13 +231,24 @@ async def agent_worker():
             result.setdefault("meta", {}).update(cached=True, cache_reason=str(e))
         timings = {**job["_timings"], **result.get("timings", {})}
         timings["total_s"] = round(time.time() - job["created_at"], 2)
+        prev = job.pop("_prev_result", None)
+        if prev is not None:
+            # Rewritten from a corrected transcript: keep the first run's finish time and total, with this agent run's time.
+            result.setdefault("meta", {})["rerun"] = True
+            pt = prev.get("timings") or {}
+            timings["total_s"] = round((pt.get("total_s") or 0) - (pt.get("agent_s") or 0) + (timings.get("agent_s") or 0), 2)
+            for t, turn in zip(result.get("transcript") or [], job["turns"]):
+                if turn.get("edited"):
+                    t["edited"] = True
         result["timings"] = timings
         roles = result.get("speakers", {}).get("roles", {})
         for t in job["turns"]:
             t["speaker"] = roles.get(t["speaker"].removeprefix("Speaker "), t["speaker"])
         job["result"] = result
         job["status"] = "done"
-        job["finished_at"] = time.time()
+        job["note_stale"] = False
+        if prev is None:
+            job["finished_at"] = time.time()
 
 
 @asynccontextmanager
@@ -268,6 +287,7 @@ async def create_job(request: Request):
     job = {
         "job_id": job_id, "filename": filename, "status": "queued", "audio_s": None, "turns": [],
         "created_at": time.time(), "finished_at": None, "error": None, "approved": False, "result": None,
+        "review": None, "note_stale": False, "reruns": 0,
         "_stem": stem, "_patient": patient, "_visit_date": visit_date, "_tries": 0, "_agent_tries": 0,
         "_timings": {"diarization_s": None, "asr_s": None},
     }
@@ -310,11 +330,85 @@ async def get_job(job_id: str):
     return public(jobs[job_id])
 
 
+def done_job(job_id):
+    job = jobs.get(job_id)
+    if job is None:
+        raise HTTPException(404, "job not found")
+    if job["status"] != "done" or not job["result"]:
+        raise HTTPException(409, "the note is not ready yet")
+    return job
+
+
+def set_review(job, status, reason=""):
+    job["approved"] = status == "approved"
+    job["review"] = {"status": status, "reason": reason, "at": time.time()} if status else None
+
+
 @app.post("/jobs/{job_id}/approve")
 async def approve_job(job_id: str):
-    if job_id not in jobs:
-        raise HTTPException(404, "job not found")
-    jobs[job_id]["approved"] = True
+    set_review(done_job(job_id), "approved")
+    return {"ok": True}
+
+
+@app.post("/jobs/{job_id}/reject")
+async def reject_job(job_id: str, request: Request):
+    """Not approved: the note needs changes. Body {"reason": "..."} is optional."""
+    body = await request.body()
+    try:
+        reason = str((json.loads(body) if body else {}).get("reason") or "").strip()[:500]
+    except (ValueError, AttributeError):
+        raise HTTPException(400, 'Send JSON like {"reason": "..."}')
+    set_review(done_job(job_id), "changes_requested", reason)
+    return {"ok": True}
+
+
+@app.put("/jobs/{job_id}/transcript")
+async def edit_transcript(job_id: str, request: Request):
+    """Correct transcript turns. Body {"turns": [{"idx": 3, "text": "..."}]}, idx as in result.transcript.
+    The note is not rewritten until POST /jobs/{id}/rerun; until then job.note_stale is true."""
+    job = done_job(job_id)
+    try:
+        edits = {int(e["idx"]): str(e["text"]).strip() for e in (await request.json())["turns"]}
+    except (ValueError, KeyError, TypeError):
+        raise HTTPException(400, 'Send JSON like {"turns": [{"idx": 0, "text": "..."}]}')
+    transcript = job["result"].get("transcript") or [
+        {"speaker": t["speaker"], "start": t["start"], "end": t["end"], "text": t.get("text", "")} for t in job["turns"]]
+    if any(i < 0 or i >= len(transcript) for i in edits) or not all(edits.values()):
+        raise HTTPException(400, "Unknown turn, or a turn left empty")
+    changed = False
+    for i, text in edits.items():
+        if transcript[i]["text"] != text:
+            transcript[i] = {**transcript[i], "text": text, "edited": True}
+            changed = True
+    if changed:
+        job["result"]["transcript"] = transcript
+        for t in job["turns"]:
+            if t["idx"] in edits and t["idx"] < len(transcript):
+                t["text"] = transcript[t["idx"]]["text"]
+        upstream = job["_data"].get("timings") if isinstance(job.get("_data"), dict) else None
+        job["_data"] = {
+            "wav": job["filename"], "total_duration": job["audio_s"], "timings": upstream or {},
+            "segments": [{"speaker": t.get("speaker_id", t["speaker"]), "start": t["start"], "end": t["end"],
+                          "text": t["text"]} for t in transcript],
+        }
+        job["note_stale"] = True
+        set_review(job, None)
+    return {"ok": True, "changed": changed}
+
+
+@app.post("/jobs/{job_id}/rerun")
+async def rerun_job(job_id: str):
+    """Rewrite the note (and checks) from the current, possibly corrected, transcript."""
+    job = done_job(job_id)
+    if not job.get("_data"):
+        raise HTTPException(409, "no transcript to rerun from")
+    edited = {i for i, t in enumerate(job["result"].get("transcript") or []) if t.get("edited")}
+    set_turns(job, job["_data"])
+    for t in job["turns"]:
+        t["edited"] = t["idx"] in edited
+    job.update(status="summarising", _prev_result=job["result"], result=None, error=None, _agent_tries=0, reruns=job["reruns"] + 1)
+    set_review(job, None)
+    await agent_queue.put(job_id)
     return {"ok": True}
 
 

@@ -41,7 +41,15 @@ POST /jobs                    multipart form, field "file"  -> {"job_id": "..."}
 GET  /jobs                                                  -> [Job, ...]
 GET  /jobs/{job_id}                                         -> Job
 POST /jobs/{job_id}/approve                                 -> {"ok": true}
+POST /jobs/{job_id}/reject      {"reason": "..."} optional  -> {"ok": true}       Don't approve: needs changes
+PUT  /jobs/{job_id}/transcript  {"turns": [{"idx", "text"}]} -> {"ok", "changed"}  doctor's corrections
+POST /jobs/{job_id}/rerun                                   -> {"ok": true}       rewrite the note from the transcript
 ```
+
+Review flow: the doctor can press **✎ Edit** on the transcript to correct turns (edited turns get an
+"edited" tag and the job gets `note_stale: true`), then **Rewrite note** reruns only the Lightning agent on
+the corrected transcript. **Don't approve** marks the job `review: {status: "changes_requested", reason}`,
+shown as "Needs changes" in the job list. Editing or rewriting clears an earlier approve/reject.
 
 The UI polls `GET /jobs` once a second. A `Job` looks like:
 
