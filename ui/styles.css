@@ -287,3 +287,13 @@ body:not(.clinician) .plain-status { display: none; }
   .proc-card { max-height: 92vh; padding: 16px; border-radius: 14px; }
   .proc-head h2 { font-size: 1.2rem; }
 }
+
+/* Sample library and original recordings */
+.sample-library { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin: 12px 0; }
+.sample-library summary { cursor: pointer; font-weight: 600; }
+.sample-library a { color: var(--doctor); }
+.sample-file { padding: 14px 0; border-bottom: 1px solid var(--border); }
+.sample-file audio, #originalAudio { display: block; width: 100%; margin: 12px 0; }
+.sample-file > div { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.sample-library h4 { margin: 18px 0 8px; }
+#originalAudioPanel { margin-bottom: 18px; }

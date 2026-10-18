@@ -114,3 +114,11 @@ token streaming.
 - `app.js` – polling, rendering, SOAP typewriter, metrics
 - `api.js` – `HttpApi` and `MockApi` (simulated queues: 2 diarization, 6 ASR, 6 agent slots)
 - `mock/consults.js` – four mock consults (the hero in the agent's output shape)
+
+## Sample library and original audio
+
+Both views include “Browse sample files”: six original WAV files with native playback, download and processing controls, plus three standalone text references. Assets live under `ui/samples/` and use relative URLs for hosting under `/clinicscribe/`. Include that folder when publishing the UI to ventustan.com.
+
+In mock mode the action is explicitly labeled “Simulate demo”; the displayed result is canned and is not derived from the audio. Real processing requires the HTTP backend and working speech/model services. Text references are view/download only and are not paired with numbered recordings.
+
+Uploaded audio can be played in the selected consult's “Original audio” panel using a browser object URL. This works for uploads made in the current page session only; it does not expose server upload storage or restore audio after a page reload. Polling does not reset playback, and starting another player pauses the previous one.

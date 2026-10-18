@@ -43,6 +43,12 @@
       </label>
       <button class="btn secondary" id="demoBtn">Load demo batch (hero + 10)</button>
       <button class="btn secondary hidden" id="procShow">Show processing</button>
+      <details class="sample-library">
+        <summary>Browse sample files</summary>
+        <p class="muted small">Listen or download before processing. Text files are separate references; no audio pairing is assumed.</p>
+        <div id="sampleFiles"></div>
+        <p id="sampleNote" class="muted small" role="status"></p>
+      </details>
       <div class="joblist-head">
         <span>Jobs</span>
         <span class="legend tech"><i class="chip doctor done"></i>Doctor <i class="chip patient done"></i>Patient</span>
@@ -66,6 +72,12 @@
             <div class="banner" id="dBanner"></div>
           </div>
           <button class="btn approve" id="approveBtn" disabled>Approve</button>
+        </div>
+
+        <div id="originalAudioPanel" class="panel hidden">
+          <h3>Original audio</h3>
+          <audio id="originalAudio" controls preload="metadata" aria-label="Original uploaded audio"></audio>
+          <p class="muted small">Available for files uploaded in this browser session.</p>
         </div>
 
         <div class="grid">

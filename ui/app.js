@@ -108,6 +108,11 @@
   let detailKey = "";                // what the detail view currently shows, to avoid needless re-renders
   let typing = null;                 // active typewriter timer
 
+  const originalAudioUrls = new Map();
+  window.addEventListener("pagehide", (event) => {
+    if (!event.persisted) originalAudioUrls.forEach((url) => URL.revokeObjectURL(url));
+  });
+
   // ---------- upload ----------
   const dz = $("dropzone");
   const input = $("fileInput");
@@ -121,6 +126,9 @@
       try {
         const { job_id } = await api.upload(f, (pct) => { entry.uploadPct = pct; renderOverlay(); });
         entry.jobId = job_id;
+        if (f.type.startsWith("audio/") || /\.(wav|mp3|m4a|flac|ogg|aac|webm)$/i.test(f.name)) {
+          originalAudioUrls.set(job_id, URL.createObjectURL(f));
+        }
         if (!selectedId) selectedId = job_id;
       } catch (e) {
         entry.error = `Upload failed: ${e.message}`;
@@ -140,6 +148,38 @@
     openOverlay();
     refresh();
   });
+
+  // Relative sample URLs also work when the UI is hosted under /clinicscribe/.
+  const audioSamples = ["1.wav", "2.wav", "3.wav", "4.wav", "5.wav", "6.wav"];
+  const textSamples = ["4468919.txt", "4468679.txt", "4469528.txt"];
+  $("sampleFiles").innerHTML = audioSamples.map((name) => `
+    <div class="sample-file">
+      <strong>${name}</strong>
+      <audio controls preload="none" src="samples/${name}" aria-label="Play sample ${name}"></audio>
+      <div><a href="samples/${name}" download>Download</a>
+      <button class="btn secondary" data-sample="${name}">${api.kind === "mock" ? "Simulate demo" : "Process audio"}</button></div>
+    </div>`).join("") + `<h4>Text references</h4>` + textSamples.map((name) => `
+    <p><a href="samples/${name}" target="_blank" rel="noopener">${name}</a> · <a href="samples/${name}" download>Download</a></p>`).join("");
+  $("sampleNote").textContent = api.kind === "mock"
+    ? "Audio playback is real. Simulate demo uses canned results, not transcription of the recording. Connect the backend for real processing."
+    : "Process audio sends the recording to the configured backend.";
+  $("sampleFiles").addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-sample]");
+    if (!button || button.disabled) return;
+    button.disabled = true;
+    try {
+      const response = await fetch(`samples/${encodeURIComponent(button.dataset.sample)}`);
+      if (!response.ok) throw new Error(`Sample download failed (${response.status})`);
+      await uploadFiles([new File([await response.blob()], button.dataset.sample, { type: "audio/wav" })]);
+    } catch (error) {
+      $("sampleNote").textContent = error.message;
+    } finally { button.disabled = false; }
+  });
+  document.addEventListener("play", (event) => {
+    if (event.target.tagName === "AUDIO") {
+      document.querySelectorAll("audio").forEach((audio) => { if (audio !== event.target) audio.pause(); });
+    }
+  }, true);
 
   $("approveBtn").addEventListener("click", async () => {
     if (!selectedId) return;
@@ -468,6 +508,15 @@
     const j = jobs.find((x) => x.job_id === selectedId);
     $("emptyState").classList.toggle("hidden", !!j);
     $("detailBody").classList.toggle("hidden", !j);
+    const audio = $("originalAudio");
+    const source = j ? originalAudioUrls.get(j.job_id) : null;
+    $("originalAudioPanel").classList.toggle("hidden", !source);
+    if ((audio.getAttribute("src") || null) !== (source || null)) {
+      audio.pause();
+      if (source) audio.src = source;
+      else audio.removeAttribute("src");
+      audio.load();
+    }
     if (!j) return;
 
     const key = `${j.job_id}|${j.status}|${j.turns.filter((t) => t.done).length}|${j.approved}|${!!j.result}`;
