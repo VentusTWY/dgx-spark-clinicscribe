@@ -75,32 +75,18 @@
   if (api.kind !== "mock") $("demoBtn").classList.add("hidden");
 
   // ---------- view ----------
-  // Clinician view (default) shows what a doctor acts on: transcript, SOAP note, items to review,
-  // MC and prescriptions, and Approve. "Technical details" adds the pipeline, models, tool calls and
-  // metrics for demos. ?view=tech or ?view=clinician overrides the remembered choice.
-  const VIEW_KEY = "clinicscribe.view";
-  let clinician = true;
-  try { clinician = localStorage.getItem(VIEW_KEY) !== "tech"; } catch (_) { /* storage blocked */ }
-  const forcedView = new URLSearchParams(location.search).get("view");
-  if (forcedView === "tech" || forcedView === "clinician") clinician = forcedView === "clinician";
+  // The main page is the clinician view: transcript, SOAP note, items to review, MC and
+  // prescriptions, and Approve. /dashboard/ (body data-view="tech") is the same app with the
+  // pipeline, models, tool calls and metrics shown, for demos and debugging.
+  const clinician = document.body.dataset.view !== "tech";
   function applyView() {
     document.body.classList.toggle("clinician", clinician);
-    $("techToggle").setAttribute("aria-pressed", String(!clinician));
     $("localBadge").textContent = clinician ? "● Runs in the clinic: no patient data leaves" : "● 100% local · Gigabyte AI TOP ATOM";
     $("checksTitle").textContent = clinician ? "To review before approving" : "Checks";
     $("emptyHint").textContent = clinician
       ? "Pick a consult to review its note."
       : "Pick a job to see its transcript, SOAP note, tool calls and flags.";
   }
-  $("techToggle").addEventListener("click", () => {
-    clinician = !clinician;
-    try { localStorage.setItem(VIEW_KEY, clinician ? "clinician" : "tech"); } catch (_) { /* storage blocked */ }
-    applyView();
-    detailKey = "";
-    renderJobs();
-    renderDetail();
-    renderOverlay();
-  });
   applyView();
   const PLAIN_STATUS = {
     queued: "Waiting", diarizing: "Transcribing", transcribing: "Transcribing",

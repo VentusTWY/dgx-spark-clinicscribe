@@ -76,12 +76,16 @@ The UI polls `GET /jobs` once a second. A `Job` looks like:
 - Optional: `timings.llm_tokens` (completion tokens) powers the "Lightning tokens/s" metric.
 - `created_at` / `finished_at` (epoch seconds) drive the wall-time and real-time-factor metrics.
 
-## Clinician view and technical details
+## Clinician view and /dashboard
 
-The page opens in the clinician view: consult list, transcript, SOAP note, the items to review
+`/` is the clinician view: consult list, transcript, SOAP note, the items to review
 (flags, MC, prescriptions, panel rules) and Approve. Model names, pipeline stages, tool calls,
-timings and the metrics bar are hidden. The "Technical details" button in the header shows them
-for demos; the choice is remembered per browser, and `?view=tech` or `?view=clinician` forces one.
+timings and the metrics bar are left out.
+
+`/dashboard/` is the same app with all of that shown: turn chips, pipeline stages and timings,
+the agent's tool calls, flags the verifier dropped, and the metrics bar. Use it for demos and
+debugging. Each page links to the other from the header. With the real backend both pages show
+the same jobs; in mock mode each page runs its own simulation.
 
 ## What the metrics bar measures
 
@@ -101,7 +105,8 @@ token streaming.
 
 ## Files
 
-- `index.html` – layout
+- `index.html` – layout (clinician view)
+- `dashboard/index.html` – technical dashboard: same markup with `data-view="tech"` and `<base href="../">`
 - `styles.css` – dark projector theme
 - `app.js` – polling, rendering, SOAP typewriter, metrics
 - `api.js` – `HttpApi` and `MockApi` (simulated queues: 2 diarization, 6 ASR, 6 agent slots)
