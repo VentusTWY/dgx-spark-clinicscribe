@@ -2,6 +2,8 @@
 
 **Team Omega Vision · ACE 2026 Malaysia (GIGABYTE x NVIDIA, Agentic Computing at the Edge) · winning project**
 
+> Built in 3 hours at the ACE 2026 Malaysia hackathon, with the demo UI tidied up afterwards. It is a hackathon prototype, not a medical device or a finished product.
+
 A GP needs a trustworthy record from every consult, without patient data leaving the clinic.
 ClinicScribe takes the recording of a GP consultation and produces a checked SOAP note, a drafted
 MC and a panel-claim check. Everything runs on the team's **GIGABYTE AI TOP ATOM** (GB10, DGX Spark

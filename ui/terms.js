@@ -1,4 +1,6 @@
 // Clinic terms editor: GET /terms to load, PUT /terms to save (see agent/terms.py).
+// Without the backend (the static demo copy) it loads mock/clinic_terms.json, a copy of
+// data/clinic_terms.json, and saves to this browser only.
 (function () {
   const $ = (id) => document.getElementById(id);
   const KINDS = ["drug", "shorthand", "panel", "other"];
@@ -36,19 +38,36 @@
     });
   }
 
+  const DEMO_KEY = "clinicscribe.demoTerms";
+  let demo = false;
+  function fill(terms) { $("termsBody").innerHTML = ""; terms.forEach(addRow); }
+
   async function load() {
     try {
       const res = await fetch(`${base}/terms`);
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-      $("termsBody").innerHTML = "";
-      (await res.json()).terms.forEach(addRow);
+      if (!res.ok) throw new Error(`${res.status}`);
+      fill((await res.json()).terms);
       msg("");
-    } catch (e) {
-      msg(`Could not load terms (${e.message}). This page needs the ClinicScribe backend (./scripts/start_demo.sh).`, "err");
+    } catch (_) {
+      demo = true;
+      let saved = null;
+      try { saved = JSON.parse(localStorage.getItem(DEMO_KEY)); } catch (_) { /* storage blocked */ }
+      try {
+        fill(saved || (await (await fetch("mock/clinic_terms.json")).json()).terms);
+        msg("Demo mode: no ClinicScribe backend here, so changes are saved in this browser only.");
+      } catch (e) {
+        msg(`Could not load terms (${e.message}).`, "err");
+      }
     }
   }
 
   async function save() {
+    if (demo) {
+      const terms = rows().filter((t) => t.term.trim());
+      try { localStorage.setItem(DEMO_KEY, JSON.stringify(terms)); } catch (_) { /* storage blocked */ }
+      fill(terms);
+      return msg(`Saved ${terms.length} terms in this browser (demo mode). With the backend they feed the next consult.`, "ok");
+    }
     msg("Saving…");
     try {
       const res = await fetch(`${base}/terms`, {
@@ -56,8 +75,7 @@
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.detail || `${res.status} ${res.statusText}`);
-      $("termsBody").innerHTML = "";
-      body.terms.forEach(addRow);
+      fill(body.terms);
       msg(`Saved ${body.terms.length} terms.`, "ok");
     } catch (e) {
       msg(`Not saved: ${e.message}`, "err");

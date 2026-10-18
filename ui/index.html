@@ -18,7 +18,7 @@
       <span class="badge local" id="localBadge">● 100% local · Gigabyte AI TOP ATOM</span>
       <a class="badge toggle" id="viewLink" href="dashboard/">Dashboard</a>
       <a class="badge toggle" href="terms.html" title="Clinic brand names, shorthand and mishearings">Clinic terms</a>
-      <span class="badge mode" id="modeBadge">MOCK</span>
+      <button class="badge mode" id="modeBadge">MOCK</button>
     </div>
   </header>
 
@@ -66,6 +66,7 @@
             <h2 id="dTitle"></h2>
             <div class="stages tech" id="dStages"></div>
             <div class="plain-status" id="dPlain"></div>
+            <div class="example-note hidden" id="dExample">Example data: this is a pre-written demo consult, not a transcript of this recording. Real transcription runs on the ATOM.</div>
             <div class="banner" id="dBanner"></div>
           </div>
           <div class="decide">
@@ -126,6 +127,18 @@
       </div>
     </section>
   </main>
+
+  <div class="overlay hidden" id="demoNotice" role="dialog" aria-modal="true" aria-labelledby="demoTitle">
+    <div class="proc-card demo-card">
+      <h2 id="demoTitle">This is a demo with example data</h2>
+      <p>ClinicScribe is built to run entirely on a local AI machine in the clinic, a Gigabyte AI TOP ATOM, with no cloud.
+        Consult audio, transcripts and notes never leave the clinic.</p>
+      <p>This web copy has no AI running behind it. The transcripts, SOAP notes, flags and timings you see are pre-written examples.
+        If you play or upload a recording, it is not transcribed: you get an example consult instead, marked as example data.</p>
+      <p class="muted">Built in 3 hours at the ACE 2026 Malaysia hackathon by Team Omega Vision. It is a prototype, not a medical product.</p>
+      <button class="btn approve" id="demoOk">Got it</button>
+    </div>
+  </div>
 
   <div class="overlay hidden" id="procOverlay" role="dialog" aria-modal="true" aria-labelledby="procTitle">
     <div class="proc-card">

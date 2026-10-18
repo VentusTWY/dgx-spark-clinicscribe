@@ -94,7 +94,9 @@
       // The hero consult goes to files that look like it, otherwise round-robin.
       let idx = this.seq % consults.length;
       if (/hero|aia/i.test(file.name)) idx = 0;
-      return this._create(file.name, consults[idx]);
+      // A real recording gets a canned consult here, not its own transcript: mark it so the UI says so.
+      const own = consults.some((c) => c.name === file.name);
+      return this._create(file.name, consults[idx], !own);
     }
     async approve(id) {
       const j = this.jobs.get(id);
@@ -141,14 +143,14 @@
       return ids;
     }
 
-    _create(filename, consult) {
+    _create(filename, consult, example = false) {
       this.seq += 1;
       const job_id = `job_${String(this.seq).padStart(3, "0")}`;
       const job = {
         job_id, filename, status: "queued", audio_s: consult.audio_s,
         turns: [], created_at: now(), finished_at: null, error: null, approved: false,
         review: null, note_stale: false, reruns: 0, edits: null,
-        result: null, consult, t: { diar: 0, asr: 0, agent: 0 }, asrStart: null,
+        result: null, example, consult, t: { diar: 0, asr: 0, agent: 0 }, asrStart: null,
       };
       this.jobs.set(job_id, job);
       this.queues.diar.push({ job, stage: "diar", left: 0.8 + consult.audio_s * 0.012 });

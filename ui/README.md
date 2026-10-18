@@ -24,7 +24,10 @@ Opening `ui/index.html` directly from disk also works (mock data only).
 | `/?api=http`       | Real FastAPI backend (`api.js` → `HttpApi`)                 |
 | `/` (default)      | Real backend if `GET /jobs` answers with a list, else mock |
 
-The badge in the top right shows **MOCK DATA** or **LIVE**. The "Load demo batch" button only
+The badge in the top right shows **MOCK DATA** or **LIVE**. In mock mode a one-time notice explains that
+no AI runs behind the page and the results are pre-written; clicking **MOCK DATA** shows it again.
+Without the backend, `terms.html` loads `mock/clinic_terms.json` (a copy of `data/clinic_terms.json`) and
+saves to the browser only. The "Load demo batch" button only
 appears in mock mode; it queues the hero consult (3-day MC on the AIA panel, limit 2) plus 10 short files.
 
 To serve the UI from the real backend, mount the folder after the API routes:
@@ -127,6 +130,6 @@ token streaming.
 
 Both views include “Browse sample files”: six original WAV files with native playback, download and processing controls, plus three standalone text references. Assets live under `ui/samples/` and use relative URLs for hosting under `/clinicscribe/`. Include that folder when publishing the UI to ventustan.com.
 
-In mock mode the action is explicitly labeled “Simulate demo”; the displayed result is canned and is not derived from the audio. Real processing requires the HTTP backend and working speech/model services. Text references are view/download only and are not paired with numbered recordings.
+In mock mode the action is explicitly labeled “Simulate demo”; the displayed result is canned and is not derived from the audio. Any uploaded recording whose name is not one of the mock consults is marked `example` by `MockApi`, and the consult view and processing window then say “Example data”. Real processing requires the HTTP backend and working speech/model services. Text references are view/download only and are not paired with numbered recordings.
 
 Uploaded audio can be played in the selected consult's “Original audio” panel using a browser object URL. This works for uploads made in the current page session only; it does not expose server upload storage or restore audio after a page reload. Polling does not reset playback, and starting another player pauses the previous one.
