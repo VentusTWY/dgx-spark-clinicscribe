@@ -1,35 +1,53 @@
-# ClinicScribe on DGX Spark
+# ClinicScribe
 
-A GP consultation goes in as a transcript. Out comes a SOAP note, checked prescriptions, a
-drafted MC and the panel billing rules, all produced by NVIDIA Nemotron 3.5 Lightning running
-locally on the team's GIGABYTE AI TOP ATOM. No patient data leaves the clinic.
+**Team Omega Vision · ACE 2026 Malaysia (GIGABYTE x NVIDIA, Agentic Computing at the Edge) · winning project**
 
-## Python modules from the original host
+A GP needs a trustworthy record from every consult, without patient data leaving the clinic.
+ClinicScribe takes the recording of a GP consultation and produces a checked SOAP note, a drafted
+MC and a panel-claim check. Everything runs on the team's **GIGABYTE AI TOP ATOM** (GB10, DGX Spark
+class) with Wi-Fi off: three local NVIDIA models, five tools whose facts are computed in code, and one
+doctor approval at the end. No cloud model, no speech API, RM0 API cost.
 
-The Python files in [`host/async_stt/`](host/async_stt/) were copied from the
-original host's `async_stt` implementation. They document how the host pipeline is
-split into workers; they are not replacement modules for the ClinicScribe agent.
-
-| Repository file | Role in the host pipeline |
+| Problem | ClinicScribe |
 |---|---|
-| [`host/async_stt/pipeline.py`](host/async_stt/pipeline.py) | Orchestrates the pipeline and dispatches work to worker queues. |
-| [`host/async_stt/vad.py`](host/async_stt/vad.py) | Diarization: identifies speaker segments in the audio. |
-| [`host/async_stt/asr.py`](host/async_stt/asr.py) | Transcribes audio segments as separate worker tasks. |
-| [`host/async_stt/llm.py`](host/async_stt/llm.py) | Host summarizer worker using vLLM directly; distinct from `agent/llm.py`. |
-| [`test_asr.py`](test_asr.py) | Submits an audio file to the host pipeline and polls its job files. |
+| Notes after every visit: the SOAP note, MC and claim are typed up by hand. | Drafted from the conversation: speaker-labelled transcript to SOAP note and MC. |
+| Rules checked too late: allergy, dose and panel limits slip through, such as a 3-day MC on a 2-day panel. | Checked before approval: code-based checks and a verifier pass raise flags with fixes. |
+| Audio leaves the clinic: cloud scribes send sensitive recordings off-site. | 100% local on the ATOM, Wi-Fi off. |
 
-The host setup uses `~/Documents/async_stt` and the `env_edwin` container. The
-gateway startup script expects that project's files at `/workspace` inside the
-container; ClinicScribe runs separately at `/workspace/clinicscribe` in the
-reported deployment. `host/async_stt/` is the repository's source snapshot folder,
-not a required installation path or a verified copy of every host subdirectory.
+## How it works
 
-The original worker deployment also needs `common/job_store.py`, shared job/audio
-storage, Redis/Celery, Ray Serve and model dependencies. Those components and the
-complete deployment configuration are not all included here. When running
-`test_asr.py` from this checkout, set `JOBS_DIR` to the worker's actual shared job
-directory; its default is `data/jobs` relative to the script. Audio paths must also
-be accessible to the workers. See the [host source notes](host/async_stt/README.md).
+```
+Upload ─▶ Diarize ─▶ ASR ─▶ Agent ─▶ Review
+queued → diarizing → transcribing (k/n turns) → summarising → done
+```
+
+1. **Hear.** NVIDIA Sortformer works out who is speaking and when; Nemotron 3.5 ASR Streaming 0.6B
+   transcribes each turn with timestamps (the team's `async_stt` pipeline on Ray Serve + Celery).
+2. **Draft.** Nemotron 3.5 Lightning (30B MoE, 3B active), served locally by vLLM, labels Doctor and
+   Patient and calls five tools: `get_panel_rules`, `check_drug`, `draft_mc`, `flag`, `write_soap_note`.
+3. **Check.** Allergies, max dose, interactions, MC dates and panel limits are computed in Python over
+   local JSON, not taken from the model's memory. A second Lightning call (the verifier) flags anything
+   unsupported or missing.
+4. **Approve.** The doctor reviews the flags and presses Approve.
+
+Example flag from the demo: *3-day MC exceeds the panel limit of 2 days. Reduce to 2 days or add a reason.*
+
+**Scope.** The speech model is English only. The formulary and panel rules in `data/` are synthetic.
+A pilot would need real formulary and panel rules, clinician validation of notes, MCs and flags, and a
+data protection and regulatory review.
+
+**Links.** [Pitch deck (PDF)](docs/ClinicScribe-Omega-Vision-Deck.pdf). Mock-data page (no backend, simulated
+numbers): [ventustan.com/clinicscribe](https://ventustan.com/clinicscribe/).
+
+| Path | What |
+|---|---|
+| `server/`, `scripts/start_demo.sh` | FastAPI backend: `/jobs` API, async queues, serves the UI on :8080 |
+| `stt_gateway/`, `scripts/start_stt_gateway.sh` | Front door to the team's `async_stt` diarization + ASR pipeline |
+| `agent/` | Lightning agent, tools, verifier (stdlib Python) |
+| `ui/` | Single-page UI, no build step, no CDN |
+| `data/` | Synthetic formulary and panel rules |
+| `samples/` | Sample consults, first-layer JSON and agent output |
+| `host/async_stt/` | Snapshot of the team's original host pipeline sources (reference only) |
 
 ## Run the demo (API + UI, fully offline)
 
@@ -96,7 +114,7 @@ The UI on its own (mock data, no backend) still runs with `python serve_ui.py`; 
 
 ## The agent stage (transcript → visit record)
 
-### How it works
+### Agent internals
 
 ```
 transcript + patient ─▶ Lightning (vLLM, tool calling) ─┬─ get_panel_rules ─▶ data/panels.json
@@ -133,7 +151,13 @@ cd dgx-spark-clinicscribe
 ./scripts/check_server.sh                         # 1. is Lightning up? does tool calling work?
 ./scripts/run_agent.sh samples/transcript_urti.json   # 2. run the agent on the sample visit
 ./scripts/run_agent.sh samples/diarized_urti.json     # 3. same visit as diarization + ASR output
+./scripts/run_agent.sh samples/diarized_hero_aia.json # 4. demo case: 3-day MC on AIA (limit 2) gets flagged
 ```
+
+Measured on our ATOM (EMARQUE-DGX-H): the 100 s sample consult takes about 64 s through the agent
+with Lightning thinking on (6.3k completion tokens). `LLM_THINKING=0` turns reasoning off for the
+whole run, which is faster; compare the note quality before using it for the demo. The verifier and
+speaker labelling always run with thinking off, because they only need a short JSON answer.
 
 The result prints to the terminal and is saved to `out/<input name>.result.json`.
 
@@ -144,25 +168,27 @@ doctor and which is the patient from what they say, and the result carries the l
 `transcript` with timestamps, plus `timings` for the metrics bar.
 
 **Is Lightning up?** `check_server.sh` lists the served models, sends a test message and
-tests tool calling. On the event ATOMs Lightning is served through Emarque's *switchyard* router
-on `127.0.0.1:9010` (and `:9011`), model id `lightning` (also `nano`, and `auto` which routes
-between them). Port 8000 is **not** the model on our ATOM: another service answers there with
-HTTP 500. To check by hand:
+tests tool calling. On the event ATOMs, the hackathon kit serves Lightning with vLLM on
+`127.0.0.1:9000`, model id `lightning`. Port 8000 is **not** the model on our ATOM: another service
+answers there with HTTP 500. If the model isn't up, start the kit's Lightning (takes ~5-10 min the
+first time, ~37 GiB):
 
 ```bash
-curl -s http://127.0.0.1:9010/v1/models
-curl -s http://127.0.0.1:9010/v1/chat/completions -H 'Content-Type: application/json' \
+demo kit-status      # is lightning :9000 ticked?
+demo kit-up          # start Lightning only (no argument)
+curl -s http://127.0.0.1:9000/v1/models
+curl -s http://127.0.0.1:9000/v1/chat/completions -H 'Content-Type: application/json' \
   -d '{"model":"lightning","max_tokens":64,"messages":[{"role":"user","content":"Say OK"}]}'
-ss -ltnp | grep -E '9010|9011'               # if refused: is switchyard running?
 ```
 
-The organisers run the model service. Per the event guide, do not start a second vLLM process
-or stop services that other people are running. If it is down, ask the EMARQUE mentors.
+`demo kit-up switchyard` also starts Nano, Omni and the switchyard router on `:9010`; set
+`LLM_BASE_URL=http://127.0.0.1:9010/v1` to go through it. Do not start your own vLLM, and do not
+stop services other people are running (`demo stop-all`, `down`, `reset`).
 
 **Different port or model name?** Everything is configurable:
 
 ```bash
-export LLM_BASE_URL=http://127.0.0.1:9010/v1   # default
+export LLM_BASE_URL=http://127.0.0.1:9000/v1   # default
 export LLM_MODEL=lightning                     # default: "lightning" if listed, else the first model
 export LLM_THINKING=0                          # optional: turn off reasoning for speed
 export LLM_MAX_TOKENS=8192                     # optional: raise if replies come back empty (default 4096)
@@ -174,7 +200,7 @@ export LLM_MAX_TOKENS=8192                     # optional: raise if replies come
 127.0.0.1, so forward it over SSH (same login NVIDIA Sync uses), then run the agent on your laptop:
 
 ```bash
-ssh -N -L 9010:127.0.0.1:9010 admin@<your-atom-hostname-or-ip>
+ssh -N -L 9000:127.0.0.1:9000 admin@<your-atom-hostname-or-ip>
 # in another terminal on the laptop:
 ./scripts/run_agent.sh samples/transcript_urti.json
 ```
@@ -214,3 +240,30 @@ calls Lightning would make.
 | `scripts/check_server.sh`, `scripts/run_agent.sh` | One-command server check and run |
 
 All data here is synthetic and for demonstration only; it is not clinical guidance.
+
+## Appendix: Python modules from the original host
+
+The Python files in [`host/async_stt/`](host/async_stt/) were copied from the
+original host's `async_stt` implementation. They document how the host pipeline is
+split into workers; they are not replacement modules for the ClinicScribe agent.
+
+| Repository file | Role in the host pipeline |
+|---|---|
+| [`host/async_stt/pipeline.py`](host/async_stt/pipeline.py) | Orchestrates the pipeline and dispatches work to worker queues. |
+| [`host/async_stt/vad.py`](host/async_stt/vad.py) | Diarization: identifies speaker segments in the audio. |
+| [`host/async_stt/asr.py`](host/async_stt/asr.py) | Transcribes audio segments as separate worker tasks. |
+| [`host/async_stt/llm.py`](host/async_stt/llm.py) | Host summarizer worker using vLLM directly; distinct from `agent/llm.py`. |
+| [`test_asr.py`](test_asr.py) | Submits an audio file to the host pipeline and polls its job files. |
+
+The host setup uses `~/Documents/async_stt` and the `env_edwin` container. The
+gateway startup script expects that project's files at `/workspace` inside the
+container; ClinicScribe runs separately at `/workspace/clinicscribe` in the
+reported deployment. `host/async_stt/` is the repository's source snapshot folder,
+not a required installation path or a verified copy of every host subdirectory.
+
+The original worker deployment also needs `common/job_store.py`, shared job/audio
+storage, Redis/Celery, Ray Serve and model dependencies. Those components and the
+complete deployment configuration are not all included here. When running
+`test_asr.py` from this checkout, set `JOBS_DIR` to the worker's actual shared job
+directory; its default is `data/jobs` relative to the script. Audio paths must also
+be accessible to the workers. See the [host source notes](host/async_stt/README.md).

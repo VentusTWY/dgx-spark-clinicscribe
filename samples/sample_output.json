@@ -82,7 +82,7 @@
   },
   "meta": {
     "model": "lightning",
-    "base_url": "http://127.0.0.1:9010/v1",
+    "base_url": "http://127.0.0.1:9000/v1",
     "visit_date": "2026-10-17",
     "latency_ms": 8421,
     "tool_calls": [

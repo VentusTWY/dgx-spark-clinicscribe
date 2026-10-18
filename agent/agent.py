@@ -11,7 +11,7 @@ Flow:
 import json
 import time
 
-from .llm import LLMClient, LLMError, parse_json_loose, strip_thinking
+from .llm import LLMClient, LLMError
 from .tools import TOOL_SCHEMAS, Workspace
 
 MAX_STEPS = 12
@@ -84,30 +84,25 @@ def _fallback_soap(client, ws, transcript):
         'Respond with JSON only: {"subjective":"","objective":"","assessment":"","plan":"","diagnoses":[]}\n\n'
         + _user_message(transcript, ws.patient, ws.visit_date)
     )
-    msg = client.chat([{"role": "user", "content": prompt}])
-    data = parse_json_loose(msg.get("content"))
+    data = client.chat_json([{"role": "user", "content": prompt}])
     ws.write_soap_note(**{k: data.get(k, "") for k in ("subjective", "objective", "assessment", "plan")}, diagnoses=data.get("diagnoses", []))
     ws._add_flag("info", "Tool calling unavailable; drug, MC and panel checks were skipped.", "agent")
 
 
 def _verify(client, ws, transcript):
     draft = {"soap": ws.soap, "prescriptions": ws.prescriptions, "mc": ws.mc}
-    msg = client.chat(
-        [
+    try:
+        v = client.chat_json([
             {"role": "system", "content": VERIFIER_PROMPT},
             {"role": "user", "content": f"TRANSCRIPT:\n{transcript}\n\nDRAFT:\n{json.dumps(draft, ensure_ascii=False)}"},
-        ],
-        temperature=0.0,
-    )
-    try:
-        v = parse_json_loose(msg.get("content"))
+        ])
         result = {
             "passed": bool(v.get("passed")),
             "unsupported": list(v.get("unsupported") or []),
             "missing": list(v.get("missing") or []),
         }
-    except (ValueError, AttributeError):
-        result = {"passed": False, "unsupported": [], "missing": [], "error": "Verifier did not return JSON", "raw": strip_thinking(msg.get("content"))[:1000]}
+    except (ValueError, AttributeError) as e:
+        result = {"passed": False, "unsupported": [], "missing": [], "error": f"Verifier did not return JSON: {e}"}
     for item in result["unsupported"]:
         ws._add_flag("warning", f"Not supported by transcript: {item}", "verifier")
     for item in result["missing"]:

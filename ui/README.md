@@ -9,7 +9,7 @@ so it works with Wi-Fi off.
 
 ```bash
 pip install fastapi uvicorn
-python serve_ui.py        # http://localhost:8080 (port 8000 is vLLM's; set PORT to change)
+python serve_ui.py        # http://localhost:8080 (set PORT to change)
 ```
 
 Opening `ui/index.html` directly from disk also works (mock data only).

@@ -2,7 +2,7 @@
 
     python serve_ui.py            # http://localhost:8080  (in-browser mock data)
 
-Port 8000 is left free for vLLM; set PORT to change it.
+Set PORT to change the port. (On the event ATOM, Lightning is on 9000 and 8000 belongs to another service.)
 
 The real backend mounts the same folder after its API routes, e.g.:
 
